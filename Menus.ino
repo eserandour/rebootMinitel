@@ -1,0 +1,137 @@
+//////////////////////////////////////////////////////////////////////////////////////
+
+// MENUS
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void selectMenu(byte tag)
+{
+  ecran = tag;
+  minitel.newScreen();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void ecranAccueil()
+{
+  boolean fin = false;
+  boolean premierPassage = true;
+  while (!fin) {
+    touche = minitel.getKeyCode();
+    switch (touche) {
+      case 0x30 :  // Touche 0
+        fin = true;
+        selectMenu(TAG_MENU_REGLAGE_HORLOGE);
+        break;
+      case 0x31 :  // Touche 1
+        fin = true;
+        selectMenu(TAG_MENU_BASIC);
+        break;
+     case 0x32 :  // Touche 2
+        /* fin = true; */
+        /* selectMenu(TAG_MENU_???); */
+        break;
+     case 0x33 :  // Touche 3
+        /* fin = true; */
+        /* selectMenu(TAG_MENU_???); */
+        break;
+     case 0x34 :  // Touche 4
+        fin = true;
+        selectMenu(TAG_MENU_A_PROPOS);
+        break;
+     default:
+       if (premierPassage) {
+         premierPassage=false;
+         forcerAffichageHorloge();  // L'écran est effacé : l'heure doit être réaffichée
+         minitel.newScreen();
+         minitel.echo(false);  // Les caractères ne s'affichent pas à l'écran
+         minitel.noCursor();
+         // entropie
+         // Font: slscript
+         // Source : http://www.network-science.de/ascii/
+         minitel.moveCursorRight(15); minitel.println(F("_/_"));
+         minitel.moveCursorRight(6); minitel.println(F("_  ____  /  __  __ _   o _"));
+         minitel.moveCursorRight(5); minitel.println(F("</_/ / <_<__/ (_(_)/_)_<_</_"));
+         minitel.moveCursorRight(23); minitel.println(F("/"));
+         minitel.moveCursorRight(22); minitel.println(F("'"));
+         // LAB
+         // Font: graffiti
+         // Source : http://www.network-science.de/ascii/
+         // Attention : Les caractères \ doivent être doublés pour s'afficher
+         minitel.moveCursorRight(5); minitel.println(F(".____       _____ __________"));
+         minitel.moveCursorRight(5); minitel.println(F("|    |     /  _  \\\\______   \\"));
+         minitel.moveCursorRight(5); minitel.println(F("|    |    /  /_\\  \\|    |  _/"));
+         minitel.moveCursorRight(5); minitel.println(F("|    |___/    |    \\    |   \\"));
+         minitel.moveCursorRight(5); minitel.println(F("|_______ \\____|__  /______  /"));
+         minitel.moveCursorRight(13); minitel.println(F("\\/       \\/       \\/"));
+         // reboot
+         // Font: digital
+         // Source : http://www.network-science.de/ascii/
+         minitel.moveCursorDown(3);
+         minitel.println(F("rebootMinitel"));
+         minitel.println("V." + VERSION);
+         /*
+         minitel.println("+-+-+-+-+-+-+");
+         minitel.println("|r|e|b|o|o|t|");
+         minitel.println("+-+-+-+-+-+-+");
+         */
+         
+         // MENU
+         minitel.moveCursorXY(20,15);
+         //minitel.print("puis ");
+         minitel.attributs(INVERSION_FOND);
+         minitel.print(F("MENU"));
+         minitel.attributs(FOND_NORMAL);
+         minitel.moveCursorXY(20,17);
+         minitel.println(F("0 - Réglage Horloge"));
+         minitel.moveCursorXY(20,18);
+         minitel.println(F("1 - reBASIC"));
+         minitel.moveCursorXY(20,19);
+         minitel.println(F("2 - "));
+         minitel.moveCursorXY(20,20);
+         minitel.println(F("3 - "));
+         minitel.moveCursorXY(20,21);
+         minitel.println(F("4 - À propos"));
+       }
+       afficherHorloge(11,24);
+       break;
+    }
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void menuReglageHorloge()
+{
+  reglageHorloge();
+  selectMenu(TAG_ECRAN_ACCUEIL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void menuBasic()
+{
+  basic();
+  selectMenu(TAG_ECRAN_ACCUEIL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void menuAPropos()
+{
+  aPropos();
+  selectMenu(TAG_ECRAN_ACCUEIL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void afficherTouche(const __FlashStringHelper* touche)
+{
+  // Affiche le nom d'une touche du Minitel en vidéo inverse (comme dans l'aide du BASIC).
+  // Le texte qui suit revient à l'affichage normal.
+  minitel.attributs(INVERSION_FOND);
+  minitel.print(touche);
+  minitel.attributs(FOND_NORMAL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
