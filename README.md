@@ -9,6 +9,8 @@ reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED
 Copyright 2023-2026 — Eric Sérandour — Logiciel libre sous licence [GNU GPLv3](LICENSE).
 Site : <https://entropie.org/3615>
 
+<img src="photos/1000011731.jpg" height="600">
+
 ---
 
 ## Sommaire
