@@ -961,7 +961,7 @@ Quand un programme a besoin de beaucoup de valeurs fixes (une liste de mots, des
 
 - La ligne 20 tourne sur elle-même tant qu'aucune touche n'est frappée : c'est une **attente active**.
 - Les lettres arrivent en minuscules ou en majuscules selon l'état du clavier : testez les deux, ou utilisez `UPPER$(K$)`.
-- **ENVOI** donne `CHR$(13)`. Les touches de fonction (SUITE, RETOUR…) et les flèches ne sont pas transmises.
+- **ENVOI** donne `CHR$(13)`. Les autres touches de fonction (SUITE, RETOUR…) n'ont pas de caractère : `INKEY$` ne les voit pas. Pour elles, il y a `KEY` (voir plus bas).
 
 ## Un objet qui se déplace
 
@@ -979,6 +979,40 @@ Les touches **4** et **6** du pavé numérique déplacent un vaisseau à gauche 
 <!--ecran keys="{WAIT:200}{k:6}{WAIT:200}{k:6}{WAIT:200}{k:6}{WAIT:200}{k:6}{SNAP}{WAIT:200}{k: }" first=8 rows=8-->
 
 L'espace avant et après `<O>` efface l'ancienne position quand le vaisseau bouge d'une case.
+
+## Les touches de fonction : KEY
+
+`KEY` fonctionne comme `INKEY$`, sans attendre, mais donne un **nombre** : le code de la touche frappée, ou 0 si aucune touche n'a été frappée. Il connaît aussi les touches de fonction du Minitel :
+
+| Touche | Code | | Touche | Code |
+|---|---|---|---|---|
+| ENVOI | 4929 | | GUIDE | 4932 |
+| RETOUR | 4930 | | CORRECTION | 4935 |
+| REPETITION | 4931 | | SUITE | 4936 |
+
+Pour les autres touches, `KEY` donne le code du caractère : 65 pour `A`, 97 pour `a`, 233 pour `é`… Comme toujours, **ANNULATION** et **SOMMAIRE** arrêtent le programme : `KEY` ne les voit jamais.
+
+Voici des pages que l'on feuillette comme sur un service Minitel :
+
+```basic
+10 P = 1
+20 CLS: PRINT "Page "; P; " sur 3"
+30 PRINT: PRINT "SUITE : page suivante"
+40 PRINT "RETOUR : page précédente"
+50 PRINT "ENVOI : fin"
+60 K = KEY: IF K = 0 THEN 60
+70 IF K = 4936 AND P < 3 THEN P = P + 1: GOTO 20
+80 IF K = 4930 AND P > 1 THEN P = P - 1: GOTO 20
+90 IF K <> 4929 THEN 60
+100 CLS: PRINT "Au revoir"
+```
+<!--ecran keys="{WAIT:200}{SUITE}{WAIT:200}{SUITE}{WAIT:200}{RETOUR}{WAIT:200}{SNAP}{ENVOI}"-->
+
+Ici, on a appuyé deux fois sur **SUITE** puis une fois sur **RETOUR** : on est revenu à la page 2.
+
+::: {custom-style="Astuce"}
+**Astuce** — Pour connaître le code d'une touche, lancez `10 K = KEY: IF K THEN PRINT K` suivi de `20 GOTO 10`, et tapez.
+:::
 
 # Le son
 
@@ -1739,7 +1773,7 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 |---|---|
 | Mathématiques | `ABS` `INT` `SGN` `SQR` `SIN` `COS` `TAN` `ATN` `LOG` `EXP` `RND(n)` |
 | Chaînes | `LEN` `LEFT$` `RIGHT$` `MID$` `INSTR` `UPPER$` `LOWER$` `VAL` `STR$` `ASC` `CHR$` `HEX$` |
-| Clavier | `INKEY$` |
+| Clavier | `INKEY$` `KEY` |
 | Temps | `TIMER` `TIME$` `DATE$` `HOUR` `MINUTE` `SECOND` `DAY` `MONTH` `YEAR` |
 | Dessin | `POINT(x,y)` |
 | Fichiers | `EOF(n)` |
