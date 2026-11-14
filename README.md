@@ -2,6 +2,8 @@
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
+Grâce à la **carte SD** du shield, reBASIC enregistre et recharge les programmes (`SAVE`, `LOAD`, `MERGE`), et chaque programme peut écrire et relire ses propres fichiers de données : scores, carnet d'adresses, journal de mesures… Ce sont de simples fichiers texte, que l'on peut aussi ouvrir sur un ordinateur, par exemple dans un tableur.
+
 reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED ou un relais, faire varier une luminosité (MLI), lire un bouton ou un interrupteur, mesurer une tension sur une entrée analogique (potentiomètre, capteur de lumière ou de température…). Le Minitel devient ainsi l'écran et le clavier de petites expériences d'électronique, programmées en BASIC.
 
 Copyright 2023-2026 — Eric Sérandour — Logiciel libre sous licence [GNU GPLv3](LICENSE).
