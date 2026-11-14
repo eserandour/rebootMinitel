@@ -20,7 +20,7 @@ SD = os.path.join(SORTIE, 'carte_sd')
 TMP = os.path.join(SORTIE, 'tmp')
 SIMULATEUR = os.path.join(SIMDIR, 'build', 'simulateur')
 
-subprocess.run([os.path.join(SIMDIR, 'compiler.sh')], check=True)
+subprocess.run(['sh', os.path.join(SIMDIR, 'compiler.sh')], check=True)
 for d in (IMG, SD, TMP):
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(d)
@@ -78,7 +78,7 @@ def inserer_image(fe, nom, o):
     ecran.image(fe, os.path.join(IMG, nom + '.png'), rangees=int(o['rows']) if 'rows' in o else None,
                 premiere=int(o.get('first', 0)), dernieres=int(o['last']) if 'last' in o else None)
     sortie.append('')
-    sortie.append(f'::: {{custom-style="Capture"}}\n![](img/{nom}.png){{width=9cm}}\n:::')
+    sortie.append(f'::: {{custom-style="Capture"}}\n![](img/{nom}.png){{width=10.5cm}}\n:::')
 
 
 i = 0

@@ -53,7 +53,7 @@ Allumez le Minitel et la carte rebootMinitel. Sur l'écran d'accueil, appuyez su
 <!--ecran mode=accueil-->
 
 - « 2048 octets libres » : la place disponible pour votre programme.
-- **GUIDE** affiche l'aide (trois pages que l'on parcourt avec **SUITE** et **RETOUR** ; **ENVOI** ramène à reBASIC).
+- **GUIDE** affiche l'aide (quatre pages que l'on parcourt avec **SUITE** et **RETOUR** ; **ENVOI** ramène à reBASIC).
 - **SOMMAIRE** quitte reBASIC et revient au menu. Votre programme n'est pas perdu : il est toujours là quand vous revenez.
 - **Ok** signifie que reBASIC attend vos ordres.
 
@@ -139,7 +139,7 @@ Les lignes sont exécutées dans l'ordre des numéros, quel que soit l'ordre dan
 ## Voir, modifier et effacer des lignes
 
 - `LIST` affiche le programme. `LIST 20` affiche la ligne 20, `LIST 10-20` les lignes 10 à 20.
-- Pour **modifier** une ligne, retapez-la entièrement avec le même numéro : la nouvelle remplace l'ancienne.
+- Pour **modifier** une ligne, retapez-la entièrement avec le même numéro : la nouvelle remplace l'ancienne. Ou bien utilisez `EDIT` (voir plus bas).
 - Pour **insérer** une ligne, choisissez un numéro intermédiaire : `15` se place entre `10` et `20`.
 - Pour **supprimer** une ligne, tapez seulement son numéro.
 - `NEW` efface tout le programme.
@@ -159,6 +159,20 @@ LIST
 ::: {custom-style="Astuce"}
 **Astuce** — Numérotez de 10 en 10 : il restera de la place pour insérer des lignes. Et si la place manque, `RENUM` renumérote tout le programme de 10 en 10 (chapitre 14).
 :::
+
+## Corriger une ligne : EDIT
+
+Retaper une longue ligne pour changer un seul mot est fastidieux. `EDIT n` réaffiche la ligne `n` dans la zone de saisie, comme si vous veniez de la taper. Effacez la fin avec **CORRECTION**, tapez la nouvelle fin, puis validez avec **ENVOI** : la ligne corrigée remplace l'ancienne. **ANNULATION** abandonne la correction sans rien changer.
+
+Ici, on tape `EDIT 10`, on appuie six fois sur **CORRECTION** pour effacer `Paris"`, on tape `Lyon"` puis **ENVOI** :
+
+```basic
+10 PRINT "Bonjour Paris"
+EDIT 10
+```
+<!--ecran mode=direct keys="{CORR}{CORR}{CORR}{CORR}{CORR}{CORR}Lyon\"\nLIST\nRUN\n"-->
+
+La correction se fait **par la fin** de la ligne : pour changer un mot au début, il faut effacer tout ce qui le suit. On peut aussi changer le numéro : la ligne est alors copiée sous le nouveau numéro, et l'ancienne reste en place.
 
 ## Plusieurs instructions sur une ligne
 
@@ -316,7 +330,85 @@ Le `;` à la fin de la ligne 40 évite le passage à la ligne, qui ferait défil
 ```
 <!--ecran-->
 
-À la fin d'un programme, reBASIC revient tout seul à l'affichage normal (blanc, sans inverse).
+À la fin d'un programme, reBASIC revient tout seul à l'affichage normal (blanc, sans inverse). `CLS` aussi : placez donc vos `COLOR` **après** le `CLS`.
+
+## La couleur de fond : PAPER
+
+`PAPER n` choisit la couleur du **fond**, avec les mêmes numéros que `COLOR`. Mais le Minitel la traite d'une façon particulière : c'est un **attribut de zone**.
+
+```basic
+10 CLS
+20 PAPER 4: PRINT " Titre sur fond bleu "
+30 PRINT "Suite de la ligne"
+40 PAPER 0: PRINT "Texte normal"
+```
+<!--ecran-->
+
+Trois règles à connaître :
+
+1. Le fond ne change qu'au **premier espace** écrit après `PAPER` : c'est pourquoi le texte de la ligne 20 commence par un espace.
+2. Il s'applique ensuite à tout ce qui est écrit sur la **même rangée**.
+3. Sur la rangée suivante, le fond redevient noir… jusqu'au premier espace, qui remet la couleur de `PAPER` (ligne 30). Revenez donc à `PAPER 0` dès que vous n'avez plus besoin du fond.
+
+Pour une barre de titre sur toute la largeur, `TAB(40)` remplit la fin de la rangée d'espaces colorés :
+
+```basic
+10 CLS
+20 COLOR 0: PAPER 7: PRINT " MON PROGRAMME"; TAB(40)
+30 COLOR 7: PAPER 0: PRINT "Bienvenue !"
+```
+<!--ecran-->
+
+## Souligner et faire clignoter
+
+- `UNDERLINE 1` **souligne** le texte, `UNDERLINE 0` arrête. C'est aussi un attribut de zone : le soulignement commence **après** le premier espace qui suit.
+- `FLASH 1` fait **clignoter** le texte qui suit (environ une fois par seconde), `FLASH 0` revient au texte fixe.
+
+```basic
+10 CLS
+20 UNDERLINE 1: PRINT " Un titre souligné": UNDERLINE 0
+30 PRINT
+40 FLASH 1: PRINT "Attention !": FLASH 0
+50 PRINT "Texte fixe"
+```
+<!--ecran-->
+
+Sur l'écran du Minitel, « Attention ! » clignote ; une image de ce document ne peut évidemment le montrer que fixe.
+
+## Écrire en grand : SIZE
+
+`SIZE n` change la taille des caractères : 0 taille normale, 1 double hauteur, 2 double largeur, 3 double taille (hauteur et largeur). C'est idéal pour les titres.
+
+```basic
+10 CLS
+20 LOCATE 6, 2: SIZE 3: PRINT "MINITEL": SIZE 0
+30 LOCATE 1, 6: SIZE 1: PRINT "Double hauteur": SIZE 0
+40 LOCATE 1, 8: SIZE 2: PRINT "Double largeur": SIZE 0
+50 LOCATE 1, 10: PRINT "Taille normale"
+60 GOTO 60
+```
+<!--ecran rows=11-->
+
+- En double hauteur (et en double taille), `SIZE` descend le curseur d'une rangée : le texte occupe la rangée où l'on était **et la suivante**. Prévoyez donc une rangée libre en dessous.
+- La double hauteur ne fonctionne pas sur la **rangée 1** : commencez au moins à la rangée 2.
+- En double largeur, chaque caractère occupe **deux colonnes** : une rangée n'en contient plus que 20.
+
+## Un écran titre
+
+En combinant tous ces effets :
+
+```basic
+10 CLS
+20 COLOR 0: PAPER 7: PRINT " reBASIC"; TAB(40)
+30 COLOR 7: PAPER 0
+40 LOCATE 11, 6: SIZE 3: PRINT "LE JEU": SIZE 0
+50 LOCATE 11, 10: UNDERLINE 1: PRINT " Hasard et réflexes"
+60 UNDERLINE 0
+70 LOCATE 10, 20: FLASH 1: PRINT "Appuyez sur une touche"
+80 FLASH 0
+90 IF INKEY$ = "" THEN 90
+```
+<!--ecran keys="{WAIT:300}{SNAP}{k:x}" rows=21-->
 
 # Dialoguer avec l'utilisateur
 
@@ -963,23 +1055,45 @@ Comme pour `LOCATE`, la ligne 50 laisse le dessin à l'écran jusqu'à ce que vo
 ```
 <!--ecran rows=24-->
 
-## Un cercle
+## Rectangles et cercles : BOX et CIRCLE
+
+| Instruction | Effet |
+|---|---|
+| `BOX x1, y1, x2, y2` | rectangle de coins (x1, y1) et (x2, y2) |
+| `CIRCLE x, y, r` | cercle de centre (x, y) et de rayon r |
+
+Comme pour `PLOT` et `LINE`, un paramètre `c` facultatif vaut 0 pour **effacer**, et un dernier paramètre `p` vaut 1 pour une figure **pleine** : `BOX x1, y1, x2, y2, 1, 1` trace un rectangle plein, `CIRCLE x, y, r, 0, 1` efface un disque.
+
+```basic
+10 CLS
+20 BOX 2, 3, 30, 30
+30 BOX 8, 9, 24, 24, 1, 1
+40 CIRCLE 56, 18, 13
+50 CIRCLE 56, 18, 5, 1, 1
+60 BOX 40, 46, 76, 69
+70 CIRCLE 50, 57, 6: CIRCLE 66, 57, 6, 1, 1
+80 GOTO 80
+```
+<!--ecran rows=24-->
+
+## Pourquoi CIRCLE n'est pas un cercle « mathématique »
+
+Les points du Minitel ne sont pas carrés : un caractère occupe une matrice de 8 × 10, découpée en 2 × 3 points, donc chaque point est **1,25 fois plus large que haut**. Un cercle tracé point par point avec `SIN` et `COS`, avec le même rayon dans les deux directions, paraît donc aplati. `CIRCLE` en tient compte : son rayon `r` est mesuré horizontalement, et il s'étend sur r × 1,25 points verticalement.
 
 ```basic
 10 CLS
 20 FOR A = 0 TO 6.3 STEP 0.05
-30 PLOT 40 + 30 * COS(A), 36 + 30 * SIN(A)
+30 PLOT 20 + 18 * COS(A), 36 + 18 * SIN(A)
 40 NEXT
-50 LOCATE 17, 12: PRINT "rond !";
-60 GOTO 60
+50 CIRCLE 60, 36, 18
+60 LOCATE 6, 24: PRINT "SIN et COS";: LOCATE 27, 24: PRINT "CIRCLE";
+70 GOTO 70
 ```
 <!--ecran rows=24-->
 
-Le texte et le dessin cohabitent, à condition de ne pas écrire dans une case où l'on dessine encore.
-
 ## Couleurs du dessin
 
-`COLOR` change aussi la couleur des points (en gris sur le Minitel 1B). Une case de l'écran n'a qu'une seule couleur : si l'on dessine dans une case déjà occupée, toute la case prend la couleur en cours.
+`COLOR` donne la couleur des **points**, et `PAPER` celle du **fond** de la case : chaque case semi-graphique a donc deux couleurs. Contrairement au texte, le fond s'applique tout de suite, sans attendre d'espace. Sur le Minitel 1B, ces couleurs apparaissent en gris.
 
 ```basic
 10 CLS
@@ -990,6 +1104,23 @@ Le texte et le dessin cohabitent, à condition de ne pas écrire dans une case o
 60 GOTO 60
 ```
 <!--ecran rows=24-->
+
+Une case n'a qu'**une** couleur de points et **une** couleur de fond : si l'on dessine dans une case déjà occupée, toute la case prend les couleurs en cours. C'est pourquoi les bandes ci-dessus semblent se toucher : leurs points partagent des cases.
+
+Pour peindre une grande surface de couleur, on **efface** un rectangle plein avec un fond choisi : les cases sont redessinées sans point, mais avec la couleur de `PAPER`.
+
+```basic
+10 CLS
+20 PAPER 4: BOX 0, 0, 79, 44, 0, 1
+30 PAPER 2: BOX 0, 45, 79, 71, 0, 1
+40 COLOR 3: PAPER 4: CIRCLE 62, 14, 7, 1, 1
+50 COLOR 7: PAPER 2: BOX 12, 33, 35, 62, 1, 1
+60 COLOR 1: BOX 20, 45, 27, 62, 1, 1
+70 GOTO 70
+```
+<!--ecran rows=24-->
+
+Le ciel (ligne 20) et l'herbe (ligne 30) sont des rectangles effacés ; le soleil est jaune sur fond bleu, la maison blanche et la porte rouge sur fond vert. Les rectangles commencent sur des cases entières (x pair, y multiple de 3) : sinon, la case partagée prendrait les couleurs du dernier tracé.
 
 ## Une animation : la balle qui rebondit
 
@@ -1037,6 +1168,7 @@ Pour animer, on efface l'objet, on change sa position, on le redessine.
 
 11. Dessinez un escalier de 8 marches qui descend de gauche à droite.
 12. Tracez le graphique de y = x² pour x allant de -8 à 8 (pensez à centrer et à mettre à l'échelle).
+13. Dessinez une cible : quatre cercles de même centre, le plus petit plein, et une flèche (un segment) plantée dedans.
 
 # L'heure et le temps
 
@@ -1290,6 +1422,7 @@ Quand reBASIC rencontre un problème, il s'arrête et affiche trois informations
 | Indice hors limites | indice de tableau négatif ou plus grand que prévu par `DIM` |
 | Valeur incorrecte | paramètre hors limites (`LOCATE 50,1`, `COLOR 9`…) |
 | Mémoire pleine | programme ou tableaux trop grands |
+| Ligne trop longue | `EDIT` d'une ligne de plus de 78 caractères (cela peut arriver après un `RENUM`) |
 | Trop d'imbrications | trop de parenthèses, de `GOSUB`, `FOR` ou `WHILE` imbriqués |
 | Plus de DATA | un `READ` de trop |
 | Fichier introuvable, Fichier non ouvert… | problème de fichier sur la carte SD |
@@ -1555,6 +1688,17 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 ```
 <!--ecran rows=24-->
 
+**Exercice 13**
+
+```basic
+10 CLS
+20 FOR R = 6 TO 24 STEP 6: CIRCLE 40, 36, R: NEXT
+30 CIRCLE 40, 36, 3, 1, 1
+40 LINE 41, 35, 75, 5
+50 GOTO 50
+```
+<!--ecran rows=24-->
+
 # Aide-mémoire
 
 ## Touches
@@ -1569,13 +1713,14 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 
 ## Commandes
 
-`RUN` · `LIST [début][-fin]` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `FILES` · `KILL "NOM"`
+`RUN` · `LIST [début][-fin]` · `EDIT n` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `FILES` · `KILL "NOM"`
 
 ## Instructions
 
 | Domaine | Instructions |
 |---|---|
-| Affichage | `PRINT` (`?`) avec `;` `,` `TAB(n)` · `CLS` · `LOCATE col,rang` · `COLOR n` · `INVERSE n` |
+| Affichage | `PRINT` (`?`) avec `;` `,` `TAB(n)` · `CLS` · `LOCATE col,rang` |
+| Attributs | `COLOR n` · `PAPER n` · `INVERSE n` · `FLASH n` · `UNDERLINE n` · `SIZE n` |
 | Saisie | `INPUT ["texte";] v,…` |
 | Variables | `[LET] v = expr` · `DIM A(n)` |
 | Décisions | `IF … THEN … [ELSE …]` · `GOTO n` · `ON x GOTO n1,…` |
@@ -1584,7 +1729,7 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 | Données | `DATA` · `READ v,…` · `RESTORE [n]` |
 | Fin, commentaire | `END` · `STOP` · `REM` · `'` |
 | Son, attente | `BEEP` · `SOUND f,ms` · `PAUSE ms` |
-| Dessin | `PLOT x,y[,c]` · `LINE x1,y1,x2,y2[,c]` |
+| Dessin | `PLOT x,y[,c]` · `LINE x1,y1,x2,y2[,c]` · `BOX x1,y1,x2,y2[,c[,p]]` · `CIRCLE x,y,r[,c[,p]]` |
 | Fichiers | `OPEN "N" FOR INPUT/OUTPUT/APPEND AS #n` · `PRINT #n` · `INPUT #n` · `LINE INPUT #n` · `CLOSE` |
 | Broches | `PINMODE b,m` · `DWRITE b,v` · `AWRITE b,v` |
 
