@@ -88,6 +88,10 @@
     INSTR([début,]a$,b$) : position de b$ dans a$ (0 si absente)
     HEX$(n) UPPER$(a$) LOWER$(a$)  (UPPER$ et LOWER$ ne changent que les lettres sans accent)
     INKEY$ : touche frappée (chaîne vide si aucune), sans attendre
+    KEY : code de la touche frappée (0 si aucune), sans attendre. Il donne aussi les
+          touches de fonction : ENVOI 4929, RETOUR 4930, REPETITION 4931, GUIDE 4932,
+          CORRECTION 4935, SUITE 4936, et pour les autres touches le code (Unicode) du
+          caractère : A 65, a 97, é 233... ANNULATION et SOMMAIRE arrêtent le programme.
     POINT(x,y) : -1 si le point est allumé, 0 sinon
     TIMER : millisecondes écoulées depuis le RUN
     TIME$ ("hh:mm:ss") DATE$ ("JJ/MM/AAAA") HOUR MINUTE SECOND DAY MONTH YEAR (horloge RTC)
@@ -220,7 +224,7 @@ byte basStyle = 0;                   // INVERSE, FLASH, UNDERLINE et SIZE (voir 
 boolean basEditPending = false;      // EDIT : une ligne attend d'être corrigée (dans basInBuf)
 byte basDepth;                       // Niveau d'imbrication des expressions
 byte basCol = 0;                     // Colonne du curseur (0 à 39)
-unsigned long basKey = 0;            // Touche frappée pendant l'exécution, pour INKEY$
+unsigned long basKey = 0;            // Touche frappée pendant l'exécution, pour INKEY$ et KEY
 byte basGfx[BAS_GFX_W * BAS_GFX_H / 8];  // Le dessin : un bit par point (720 octets)
 unsigned long basTimer0 = 0;         // Origine de TIMER (millis au moment du RUN)
 unsigned int basErrLigne = 0;        // Numéro de la ligne introuvable (erreur BAS_E_LIGNE)
@@ -575,13 +579,18 @@ void basHelpPage(byte page)
     basPutsP(PSTR(" LOG EXP RND(n) POINT(x,y)\n"));
     basPutsP(PSTR(" LEN VAL ASC CHR$ STR$ HEX$\n"));
     basPutsP(PSTR(" LEFT$ RIGHT$ MID$ INSTR\n"));
-    basPutsP(PSTR(" UPPER$ LOWER$ INKEY$\n"));
+    basPutsP(PSTR(" UPPER$ LOWER$ INKEY$ KEY\n"));
     basPutsP(PSTR(" TIMER (ms depuis le RUN)\n"));
     basPutsP(PSTR(" TIME$ DATE$ HOUR MINUTE SECOND\n"));
     basPutsP(PSTR(" DAY MONTH YEAR\n"));
     basNewLine();
     basPutsP(PSTR("Opérateurs : + - * / ^ MOD\n"));
     basPutsP(PSTR(" = <> < > <= >= AND OR NOT\n"));
+    basNewLine();
+    basPutsP(PSTR("Codes de KEY : ENVOI 4929\n"));
+    basPutsP(PSTR(" RETOUR 4930  REPETITION 4931\n"));
+    basPutsP(PSTR(" GUIDE 4932  CORRECTION 4935\n"));
+    basPutsP(PSTR(" SUITE 4936  autres : code du caractère\n"));
   }
   else {
     basPutsP(PSTR("Fichiers de données (.TXT) :\n"));
@@ -744,7 +753,7 @@ byte basReadLine(char* buf, byte maxLen, boolean garder)
 void basCheckBreak()
 {
   // Regarde si SOMMAIRE ou ANNULATION a été frappée pendant l'exécution.
-  // Une autre touche est gardée pour INKEY$.
+  // Une autre touche est gardée pour INKEY$ et KEY.
   unsigned long k = minitel.getKeyCode();
   if (k == 0) return;
   if (k == SOMMAIRE || k == ANNULATION) basErr = BAS_E_BREAK;
@@ -1709,6 +1718,15 @@ float basPrimary()
       }
     }
     else if (BAS_KW("INSTR")) v = basInstr();
+    else if (BAS_KW("KEY")) {
+      // Code de la touche frappée, comme le donne Minitel1B_Hard (0 si aucune) : les
+      // touches de fonction (SUITE 4936...) n'ont pas de caractère, INKEY$ ne les voit pas
+      if (basKey == 0) basKey = minitel.getKeyCode();
+      unsigned long k = basKey;
+      basKey = 0;
+      if (k == SOMMAIRE || k == ANNULATION) basErr = BAS_E_BREAK;
+      else v = (float) k;
+    }
     else if (BAS_KW("TIMER")) v = (float) (millis() - basTimer0);
     else if (BAS_KW("HOUR")) v = basClockNum('H');
     else if (BAS_KW("MINUTE")) v = basClockNum('N');

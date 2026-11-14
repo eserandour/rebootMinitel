@@ -1,10 +1,10 @@
-# rebootMinitel (version 2026.11.14d)
+# rebootMinitel (version 2026.11.14e)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
 Grâce à la **carte SD** du shield, reBASIC enregistre et recharge les programmes (`SAVE`, `LOAD`, `MERGE`), et chaque programme peut écrire et relire ses propres fichiers de données : scores, carnet d'adresses, journal de mesures… Ce sont de simples fichiers texte, que l'on peut aussi ouvrir sur un ordinateur, par exemple dans un tableur.
 
-reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED ou un relais, faire varier une luminosité (MLI), lire un bouton ou un interrupteur, mesurer une tension sur une entrée analogique (potentiomètre, capteur de lumière ou de température…). Le Minitel devient ainsi l'écran et le clavier de petites expériences d'électronique (ou littéraires), programmées en BASIC.
+reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED ou un relais, faire varier une luminosité (MLI), lire un bouton ou un interrupteur, mesurer une tension sur une entrée analogique (potentiomètre, capteur de lumière ou de température…). Le Minitel devient ainsi l'écran et le clavier de petites expériences d'électronique, programmées en BASIC.
 
 Copyright 2023-2026 — Eric Sérandour — Logiciel libre sous licence [GNU GPLv3](LICENSE).
 Site : <https://entropie.org/3615>
@@ -231,6 +231,7 @@ Ces instructions suivent les règles du Minitel (STUM 1B, partie 2, chapitre 2) 
 | `EOF(n)` | -1 à la fin du fichier n, 0 sinon |
 | `DREAD(broche)` | État d'une broche numérique : 0 ou 1 |
 | `AREAD(entrée)` | Entrée analogique : 0 à 1023 |
+| `KEY` | Code de la touche frappée, sans attendre (0 si aucune), touches de fonction comprises (voir ci-dessous) |
 
 **Fonctions de chaînes**
 
@@ -245,6 +246,24 @@ Ces instructions suivent les règles du Minitel (STUM 1B, partie 2, chapitre 2) 
 | `INKEY$` | Touche frappée, sans attendre (chaîne vide si aucune) |
 | `TIME$` | Heure, « hh:mm:ss » |
 | `DATE$` | Date, « JJ/MM/AAAA » |
+
+**Codes donnés par `KEY`**
+
+`INKEY$` ne donne que des caractères : les touches de fonction du Minitel n'en ont pas. `KEY` donne le code de toutes les touches, tel que le transmet le Minitel :
+
+| Touche | Code | | Touche | Code |
+|---|---|---|---|---|
+| ENVOI | 4929 | | GUIDE | 4932 |
+| RETOUR | 4930 | | CORRECTION | 4935 |
+| REPETITION | 4931 | | SUITE | 4936 |
+
+Pour les autres touches, `KEY` donne le code (Unicode) du caractère : `A` 65, `a` 97, `é` 233… ANNULATION et SOMMAIRE ne sont pas transmises : elles arrêtent le programme, comme toujours. `KEY` et `INKEY$` lisent le même clavier : une touche lue par l'un n'est plus disponible pour l'autre.
+
+```basic
+10 K = KEY: IF K = 0 THEN 10
+20 IF K = 4936 THEN PRINT "SUITE" ELSE PRINT "Code "; K
+30 GOTO 10
+```
 
 ### Variables et opérateurs
 
