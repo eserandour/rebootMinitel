@@ -365,3 +365,12 @@ Ces tailles se règlent au début de `Basic.ino` (`BAS_PROG_SIZE`, `BAS_STR_MAX`
 40 NEXT
 50 COLOR 7: LINE 0,71,79,0
 ```
+
+---
+
+## Outils
+
+Le dossier [`outils/`](outils/) contient, pour l'ordinateur :
+
+- un **simulateur** de reBASIC, qui compile le vrai `Basic.ino` sur PC : exécuter un programme, utiliser reBASIC dans un terminal, produire des images d'écran ;
+- la **fabrication du tutoriel** « Programmer en reBASIC » (ODT et PDF), dont tous les exemples sont exécutés dans le simulateur.
