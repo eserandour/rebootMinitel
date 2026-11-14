@@ -11,7 +11,7 @@ void aPropos()
   
   texte = F("rebootMinitel (2023-2026)");
   int x = (40 - texte.length()) / 2 + 1; 
-  minitel.moveCursorXY(x, 9);   // Bloc de 7 rangées au milieu de l'écran
+  minitel.moveCursorXY(x, 9);
   minitel.print(texte);
   
   texte = F("Auteur : Eric Sérandour");
