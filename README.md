@@ -17,6 +17,7 @@ Site : <https://entropie.org/3615>
   - [Saisie et touches](#saisie-et-touches)
   - [Commandes](#commandes)
   - [Instructions](#instructions)
+  - [Attributs d'affichage](#attributs-daffichage)
   - [Fonctions](#fonctions)
   - [Variables et opérateurs](#variables-et-opérateurs)
   - [Dessin](#dessin)
@@ -74,7 +75,9 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 
 ## reBASIC
 
-Un petit interpréteur BASIC dans l'esprit des BASIC des années 80, adapté au Minitel : 40 colonnes, écran qui défile, touches de fonction, lettres accentuées, caractères semi-graphiques. Les programmes sont enregistrés sur la carte SD.
+Un petit interpréteur BASIC dans l'esprit des BASIC des années 80, adapté au Minitel : 40 colonnes, écran qui défile, touches de fonction, lettres accentuées, couleurs de fond, double taille, caractères semi-graphiques. Les programmes sont enregistrés sur la carte SD.
+
+Pour apprendre à programmer en reBASIC, pas à pas et avec de nombreux exemples : le tutoriel **[Programmer en reBASIC](Tutoriel_reBASIC.pdf)** (aussi en [ODT](Tutoriel_reBASIC.odt)).
 
 ```
 reBASIC - 2048 octets libres
@@ -99,7 +102,7 @@ RUN
 | `ENVOI` (ou Retour chariot) | Valide la ligne |
 | `CORRECTION` | Efface le dernier caractère |
 | `ANNULATION` | Abandonne la ligne en cours / interrompt le programme |
-| `GUIDE` | Affiche l'aide (3 pages : `SUITE` et `RETOUR` pour changer de page, `ENVOI` pour revenir à reBASIC) |
+| `GUIDE` | Affiche l'aide (4 pages : `SUITE` et `RETOUR` pour changer de page, `ENVOI` pour revenir à reBASIC) |
 | `SOMMAIRE` | Interrompt le programme / quitte reBASIC (le programme en mémoire est conservé) |
 
 ### Commandes
@@ -107,6 +110,7 @@ RUN
 | Commande | Rôle |
 |---|---|
 | `RUN` | Lance le programme (efface d'abord les variables) |
+| `EDIT n` | Réaffiche la ligne n dans la zone de saisie, pour la corriger : `CORRECTION` efface la fin, `ENVOI` valide, `ANNULATION` abandonne |
 | `LIST [début][-fin]` | Affiche le programme, ou une partie : `LIST 100`, `LIST 100-200`, `LIST -50`, `LIST 300-` |
 | `NEW` | Efface le programme et les variables |
 | `MEM` | Affiche la mémoire libre pour le programme |
@@ -130,10 +134,10 @@ Les noms de fichiers suivent le format 8.3 : 1 à 8 lettres, chiffres, `_` ou `-
 |---|---|
 | `PRINT` (ou `?`) | Affiche des nombres et des chaînes. `;` colle les éléments, `,` passe à la colonne suivante (multiple de 10), `TAB(n)` va à la colonne n. Un `;` ou une `,` en fin de ligne évite le retour à la ligne. |
 | `INPUT ["texte";] v[,v…]` | Demande une ou plusieurs valeurs au clavier |
-| `CLS` | Efface l'écran (et le dessin) |
+| `CLS` | Efface l'écran (et le dessin), et revient à l'affichage normal |
 | `LOCATE colonne,rangée` | Place le curseur (colonne 1 à 40, rangée 1 à 24) |
-| `COLOR n` | Couleur du texte et du dessin, de 0 à 7 : 0 noir, 1 rouge, 2 vert, 3 jaune, 4 bleu, 5 magenta, 6 cyan, 7 blanc (sur un Minitel noir et blanc : niveaux de gris) |
-| `INVERSE n` | Vidéo inverse (1) ou normale (0) |
+
+Couleurs, fond, inversion, clignotement, soulignement et taille : voir [Attributs d'affichage](#attributs-daffichage).
 
 **Variables et contrôle**
 
@@ -166,6 +170,39 @@ Les noms de fichiers suivent le format 8.3 : 1 à 8 lettres, chiffres, `_` ou `-
 **Dessin** : `PLOT` et `LINE`, voir [Dessin](#dessin).
 **Fichiers** : `OPEN`, `CLOSE`, `PRINT #`, `INPUT #`, `LINE INPUT #`, voir [Fichiers de données](#fichiers-de-données).
 **Broches** : `PINMODE`, `DWRITE`, `AWRITE`, voir [Broches de l'Arduino](#broches-de-larduino).
+
+### Attributs d'affichage
+
+Les couleurs vont de 0 à 7 : 0 noir, 1 rouge, 2 vert, 3 jaune, 4 bleu, 5 magenta, 6 cyan, 7 blanc. Sur le Minitel 1B, dont l'écran est monochrome, elles apparaissent en niveaux de gris.
+
+| Instruction | Rôle |
+|---|---|
+| `COLOR n` | Couleur des caractères et des points |
+| `PAPER n` | Couleur de fond (voir ci-dessous) |
+| `INVERSE n` | Vidéo inverse (1) ou normale (0) |
+| `FLASH n` | Clignotement (1) ou texte fixe (0) |
+| `UNDERLINE n` | Soulignement (1) ou non (0) |
+| `SIZE n` | Taille : 0 normale, 1 double hauteur, 2 double largeur, 3 double taille |
+
+Ces instructions suivent les règles du Minitel (STUM 1B, partie 2, chapitre 2) :
+
+- **`PAPER` et `UNDERLINE` sont des attributs de zone.** En texte, ils ne prennent effet qu'au **premier espace** écrit ensuite (`PAPER 4: PRINT " Titre"`), puis valent pour tout ce qui est écrit sur la même rangée. Sur la rangée suivante, le fond redevient noir jusqu'au premier espace, qui remet la couleur de `PAPER` : revenez à `PAPER 0` quand vous n'en avez plus besoin. En dessin, chaque case semi-graphique prend aussitôt le fond en cours : une case a donc deux couleurs, `COLOR` pour les points et `PAPER` pour le fond.
+- **Double hauteur et double taille** : `SIZE 1` ou `SIZE 3` descend le curseur d'une rangée, et le texte occupe la rangée de départ et la suivante. Elles sont sans effet sur la rangée 1.
+- **Double largeur** : chaque caractère occupe deux colonnes.
+- Le semi-graphique annule la taille, l'inversion et le soulignement du Minitel : reBASIC les rétablit après chaque dessin.
+- `CLS`, la fin du programme et les messages d'erreur reviennent à l'affichage normal.
+
+```basic
+10 CLS
+20 COLOR 0: PAPER 7: PRINT " reBASIC"; TAB(40)
+30 COLOR 7: PAPER 0
+40 LOCATE 11, 6: SIZE 3: PRINT "LE JEU": SIZE 0
+50 LOCATE 11, 10: UNDERLINE 1: PRINT " Hasard et réflexes"
+60 UNDERLINE 0
+70 LOCATE 10, 20: FLASH 1: PRINT "Appuyez sur une touche"
+80 FLASH 0
+90 IF INKEY$ = "" THEN 90
+```
 
 ### Fonctions
 
@@ -226,9 +263,12 @@ L'écran est une grille de **80 × 72 points** (x de 0 à 79, y de 0 à 71, orig
 |---|---|
 | `PLOT x,y[,c]` | Allume un point (l'éteint si c = 0) |
 | `LINE x1,y1,x2,y2[,c]` | Trace un segment (l'efface si c = 0) |
+| `BOX x1,y1,x2,y2[,c[,p]]` | Trace un rectangle (l'efface si c = 0 ; plein si p = 1) |
+| `CIRCLE x,y,r[,c[,p]]` | Trace un cercle de centre (x,y) et de rayon r (l'efface si c = 0 ; plein si p = 1) |
 | `POINT(x,y)` | -1 si le point est allumé |
 
-- La couleur est celle fixée par `COLOR`. Une case n'a qu'une couleur : un nouveau tracé dans une case lui donne la couleur en cours.
+- Les points du Minitel sont 1,25 fois plus larges que hauts (matrice de 8 × 10 découpée en 2 × 3). Le rayon de `CIRCLE` est donc mesuré horizontalement, et le cercle s'étend sur r × 1,25 points verticalement, pour paraître rond.
+- La couleur des points est celle fixée par `COLOR`, le fond de la case celui fixé par `PAPER`. Une case n'a qu'une couleur de points et une couleur de fond : un nouveau tracé dans une case lui donne les couleurs en cours. Pour peindre une grande surface, effacez un rectangle plein avec le fond voulu : `PAPER 4: BOX 0,0,79,35,0,1`.
 - `CLS` efface le dessin.
 - Les points sont gardés en mémoire pour pouvoir en allumer plusieurs dans une même case. Cette mémoire ne suit pas le défilement de l'écran : mieux vaut dessiner après un `CLS` et placer le texte avec `LOCATE`.
 - La case en bas à droite n'est pas dessinée, car y écrire ferait défiler l'écran.
@@ -288,6 +328,7 @@ Erreur de syntaxe en ligne 10
 | Ligne n inexistante | `GOTO`, `GOSUB`, `RESTORE`… vers une ligne qui n'existe pas |
 | RETURN sans GOSUB / NEXT sans FOR / WEND sans WHILE / WHILE sans WEND | Structures mal appariées |
 | Mémoire pleine | Programme ou tableaux trop grands |
+| Ligne trop longue | `EDIT` d'une ligne de plus de 78 caractères (possible après un `RENUM`) |
 | Type incompatible | Nombre à la place d'une chaîne, ou l'inverse |
 | Indice hors limites | Indice de tableau en dehors de 0 à n |
 | Trop d'imbrications | Trop de parenthèses, `GOSUB`, `FOR` ou `WHILE` imbriqués |
@@ -359,11 +400,13 @@ Ces tailles se règlent au début de `Basic.ino` (`BAS_PROG_SIZE`, `BAS_STR_MAX`
 **Un dessin**
 
 ```basic
-10 CLS: COLOR 3
-20 FOR A=0 TO 6.3 STEP 0.01
-30 PLOT 40+30*COS(A), 36+30*SIN(A)
-40 NEXT
-50 COLOR 7: LINE 0,71,79,0
+10 CLS
+20 PAPER 4: BOX 0, 0, 79, 44, 0, 1
+30 PAPER 2: BOX 0, 45, 79, 71, 0, 1
+40 COLOR 3: PAPER 4: CIRCLE 62, 14, 7, 1, 1
+50 COLOR 7: PAPER 2: BOX 12, 33, 35, 62, 1, 1
+60 COLOR 1: BOX 20, 45, 27, 62, 1, 1
+70 GOTO 70
 ```
 
 ---

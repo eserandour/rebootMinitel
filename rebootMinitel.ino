@@ -3,7 +3,7 @@
    rebootMinitel
    Copyright 2023-2026 - Eric Sérandour
 */
-   const String VERSION = "2026.11.14b";  // 01h32
+   const String VERSION = "2026.11.14c";  // 15h24
 /*
    
    This program is free software: you can redistribute it and/or modify

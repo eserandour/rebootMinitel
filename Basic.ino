@@ -20,6 +20,7 @@
 
   Commandes :
     RUN   LIST [début][-fin]   NEW   MEM   AIDE
+    EDIT n               : réaffiche la ligne n dans la zone de saisie pour la corriger
     RENUM [début][,pas]  : renumérote le programme (10,10 par défaut) et met à jour
                            les numéros après GOTO, GOSUB, THEN, ELSE, RESTORE et ON...
     SAVE "NOM"   LOAD "NOM"   MERGE "NOM"   FILES   KILL "NOM"
@@ -33,9 +34,26 @@
     FOR v = a TO b [STEP c]     NEXT [v]   WHILE condition ... WEND
     DATA 12,"TEXTE",-3.5   READ variable[,variable...]   RESTORE [n]
     DIM A(n)   REM         END   STOP
-    CLS        LOCATE colonne,rangée       COLOR n (0 à 7)   INVERSE n (0 ou 1)
-    BEEP       SOUND fréquence,durée(ms)   PAUSE durée(ms)
-    PLOT x,y[,c]   LINE x1,y1,x2,y2[,c]    (dessin, voir plus bas)
+    CLS        LOCATE colonne,rangée       BEEP   SOUND fréquence,durée(ms)   PAUSE durée(ms)
+    PLOT x,y[,c]   LINE x1,y1,x2,y2[,c]    BOX x1,y1,x2,y2[,c[,p]]   CIRCLE x,y,r[,c[,p]]
+    (dessin, voir plus bas)
+
+  Attributs d'affichage (0 à 7 : noir, rouge, vert, jaune, bleu, magenta, cyan, blanc) :
+    COLOR n      : couleur des caractères et des points
+    PAPER n      : couleur de fond. C'est un attribut de zone du Minitel : en texte, il
+                   prend effet au premier espace écrit ensuite et dure jusqu'à la fin de la
+                   rangée (ou jusqu'au prochain espace après un autre PAPER). En dessin,
+                   chaque case semi-graphique prend aussitôt le fond en cours.
+    INVERSE n    : vidéo inverse (1) ou normale (0)
+    FLASH n      : clignotement (1) ou fixe (0)
+    UNDERLINE n  : soulignement (1) ou non (0). Attribut de zone comme PAPER : il commence
+                   au premier espace qui suit.
+    SIZE n       : 0 normale, 1 double hauteur, 2 double largeur, 3 double taille. En
+                   double hauteur, le curseur descend d'une rangée et le texte occupe la
+                   rangée de départ et celle-ci (sans effet sur la rangée 1).
+    CLS, la fin du programme et les messages d'erreur reviennent à l'affichage normal.
+    Le semi-graphique annule la taille, l'inversion et le soulignement du Minitel :
+    reBASIC les rétablit après chaque dessin.
 
   Fichiers de données (carte SD, extension .TXT par défaut, 2 fichiers ouverts au plus) :
     OPEN "NOM" FOR INPUT|OUTPUT|APPEND AS #n   (n = 1 ou 2)
@@ -81,8 +99,11 @@
   Dessin :
     L'écran est une grille de 80 x 72 points (x de 0 à 79, y de 0 à 71, origine en haut
     à gauche), obtenue avec les caractères semi-graphiques : chaque case de texte contient
-    2 x 3 points. PLOT allume un point et LINE trace un segment ; avec c = 0, ils éteignent.
-    La couleur est celle fixée par COLOR. CLS efface le dessin.
+    2 x 3 points. PLOT allume un point, LINE trace un segment, BOX un rectangle et CIRCLE
+    un cercle de rayon r (mesuré horizontalement : les points du Minitel sont plus larges
+    que hauts, le cercle s'étend donc sur r x 1,25 points verticalement pour paraître rond).
+    Avec c = 0, ils éteignent ; avec p = 1, BOX et CIRCLE sont pleins.
+    La couleur est celle fixée par COLOR, le fond celui fixé par PAPER. CLS efface le dessin.
     Les points sont gardés en mémoire pour pouvoir en allumer plusieurs dans une même case.
     Cette mémoire ne suit pas le défilement de l'écran : mieux vaut dessiner après un CLS
     et placer le texte avec LOCATE. Un texte écrit sur le dessin est remplacé par les
@@ -138,6 +159,7 @@
 #define BAS_E_DEJA      19
 #define BAS_E_BROCHE    20
 #define BAS_E_HORLOGE   21
+#define BAS_E_LONGUE    22
 
 // Résultats de la saisie d'une ligne
 #define BAS_K_OK      0
@@ -191,7 +213,11 @@ byte* basCur;                        // Ligne en cours d'exécution (NULL : lign
 byte basErr;                         // Erreur en cours (0 : aucune)
 boolean basStop;                     // Demande d'arrêt de l'exécution
 boolean basJumped;                   // Un saut vient d'avoir lieu
-boolean basAttr;                     // COLOR ou INVERSE ont été utilisés
+boolean basAttr;                     // Un attribut d'affichage a été changé (COLOR, PAPER...)
+byte basInk = 7;                     // COLOR : couleur des caractères et des points
+byte basPaper = 0;                   // PAPER : couleur de fond
+byte basStyle = 0;                   // INVERSE, FLASH, UNDERLINE et SIZE (voir BAS_ST_...)
+boolean basEditPending = false;      // EDIT : une ligne attend d'être corrigée (dans basInBuf)
 byte basDepth;                       // Niveau d'imbrication des expressions
 byte basCol = 0;                     // Colonne du curseur (0 à 39)
 unsigned long basKey = 0;            // Touche frappée pendant l'exécution, pour INKEY$
@@ -205,6 +231,13 @@ void basStatement();
 
 #define BAS_KW(mot) basKw(PSTR(mot))
 
+// Bits de basStyle
+#define BAS_ST_INVERSE  0x01
+#define BAS_ST_FLASH    0x02
+#define BAS_ST_SOULIGNE 0x04
+#define BAS_ST_HAUT     0x10  // Double hauteur
+#define BAS_ST_LARGE    0x20  // Double largeur (avec BAS_ST_HAUT : double taille)
+
 // Les fonctions qui ont besoin d'un tampon de chaîne sont séparées et ne doivent pas
 // être intégrées par le compilateur dans celles qui les appellent : ainsi leur tampon
 // n'occupe la pile que lorsqu'elles sont réellement utilisées, et pas à chaque niveau
@@ -217,8 +250,47 @@ void basStatement();
 
 void basAvance()
 {
-  basCol++;
-  if (basCol >= 40) basCol = 0;  // Le Minitel passe tout seul à la rangée suivante
+  basCol += (basStyle & BAS_ST_LARGE) ? 2 : 1;  // En double largeur, un caractère occupe deux colonnes
+  if (basCol >= 40) basCol -= 40;  // Le Minitel passe tout seul à la rangée suivante
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basEsc(byte attribut)
+{
+  // Envoie un attribut au Minitel sans passer par minitel.attributs(), qui descend le
+  // curseur d'une rangée pour la double hauteur
+  minitel.writeByte(0x1B);
+  minitel.writeByte(attribut);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basRestoreAttr()
+{
+  // Après un caractère semi-graphique, le Minitel a annulé la taille, l'inversion et le
+  // soulignement (STUM 1B p. 91 et 94) : on les rétablit. La couleur, le fond et le
+  // clignotement sont conservés.
+  if (basStyle & BAS_ST_INVERSE) basEsc(INVERSION_FOND);
+  if (basStyle & BAS_ST_SOULIGNE) basEsc(DEBUT_LIGNAGE);
+  byte taille = (basStyle & (BAS_ST_HAUT | BAS_ST_LARGE)) >> 4;
+  if (taille) basEsc(GRANDEUR_NORMALE + taille);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basResetAttr()
+{
+  // Revient à l'affichage normal : blanc sur fond noir, sans effet, taille normale
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.attributs(FOND_NORMAL);
+  minitel.attributs(FIXE);
+  minitel.attributs(FIN_LIGNAGE);
+  minitel.attributs(GRANDEUR_NORMALE);
+  minitel.attributs(FOND_NOIR);
+  basInk = 7;
+  basPaper = 0;
+  basStyle = 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -384,8 +456,7 @@ void basShowErrorLine(const char* texte, const char* pos)
 void basPrintError()
 {
   const char* pos = basP;  // Endroit où l'analyse s'est arrêtée
-  minitel.attributs(CARACTERE_BLANC);  // Le message doit rester lisible après un COLOR
-  minitel.attributs(FOND_NORMAL);
+  basResetAttr();  // Le message doit rester lisible après un COLOR, un SIZE...
   if (basCol != 0) basNewLine();
   switch (basErr) {
     case BAS_E_SYNTAXE : basPutsP(PSTR("Erreur de syntaxe")); break;
@@ -413,6 +484,7 @@ void basPrintError()
     case BAS_E_DEJA    : basPutsP(PSTR("Fichier déjà ouvert")); break;
     case BAS_E_BROCHE  : basPutsP(PSTR("Broche interdite")); break;
     case BAS_E_HORLOGE : basPutsP(PSTR("Horloge absente")); break;
+    case BAS_E_LONGUE  : basPutsP(PSTR("Ligne trop longue")); break;
   }
   if (basCur != NULL) {
     basPutsP(PSTR(" en ligne "));
@@ -442,7 +514,7 @@ void basKeyName(const char* nom)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-#define BAS_HELP_PAGES 3     // Nombre de pages de l'aide
+#define BAS_HELP_PAGES 4     // Nombre de pages de l'aide
 
 void basHelpPage(byte page)
 {
@@ -461,7 +533,7 @@ void basHelpPage(byte page)
   if (page == 0) {
     basPutsP(PSTR("Commandes :\n"));
     basPutsP(PSTR(" RUN LIST [n][-m] NEW MEM AIDE\n"));
-    basPutsP(PSTR(" RENUM [début][,pas]\n"));
+    basPutsP(PSTR(" EDIT n  RENUM [début][,pas]\n"));
     basPutsP(PSTR(" SAVE \"NOM\" LOAD \"NOM\" MERGE \"NOM\"\n"));
     basPutsP(PSTR(" FILES KILL \"NOM\"\n"));
     basNewLine();
@@ -478,13 +550,26 @@ void basHelpPage(byte page)
     basPutsP(PSTR(" DIM A(n)  REM  END  STOP\n"));
   }
   else if (page == 1) {
-    basPutsP(PSTR("Ecran et son :\n"));
-    basPutsP(PSTR(" CLS  LOCATE x,y  COLOR n (0 à 7)\n"));
-    basPutsP(PSTR(" INVERSE n  BEEP  SOUND f,ms\n"));
-    basPutsP(PSTR(" PAUSE ms\n"));
-    basPutsP(PSTR(" PLOT x,y[,c]  LINE x1,y1,x2,y2[,c]\n"));
-    basPutsP(PSTR(" (dessin de 80 x 72 points)\n"));
+    basPutsP(PSTR("Ecran (couleurs 0 à 7) :\n"));
+    basPutsP(PSTR(" CLS  LOCATE col,rang\n"));
+    basPutsP(PSTR(" COLOR n  PAPER n (fond)\n"));
+    basPutsP(PSTR(" INVERSE n  FLASH n  UNDERLINE n\n"));
+    basPutsP(PSTR(" SIZE n (0 normale, 1 double hauteur,\n"));
+    basPutsP(PSTR("  2 double largeur, 3 double taille)\n"));
+    basPutsP(PSTR(" PAPER et UNDERLINE commencent au\n"));
+    basPutsP(PSTR(" premier espace qui suit.\n"));
     basNewLine();
+    basPutsP(PSTR("Son :\n"));
+    basPutsP(PSTR(" BEEP  SOUND f,ms  PAUSE ms\n"));
+    basNewLine();
+    basPutsP(PSTR("Dessin (80 x 72 points) :\n"));
+    basPutsP(PSTR(" PLOT x,y[,c]\n"));
+    basPutsP(PSTR(" LINE x1,y1,x2,y2[,c]\n"));
+    basPutsP(PSTR(" BOX x1,y1,x2,y2[,c[,p]]\n"));
+    basPutsP(PSTR(" CIRCLE x,y,r[,c[,p]]\n"));
+    basPutsP(PSTR(" (c=0 efface, p=1 plein)  POINT(x,y)\n"));
+  }
+  else if (page == 2) {
     basPutsP(PSTR("Fonctions :\n"));
     basPutsP(PSTR(" ABS INT SGN SQR SIN COS TAN ATN\n"));
     basPutsP(PSTR(" LOG EXP RND(n) POINT(x,y)\n"));
@@ -588,26 +673,35 @@ void basKeyToStr(unsigned long k, char* s)
 void basErase()
 {
   // Efface à l'écran le caractère situé à gauche du curseur
-  if (basCol == 0) {  // Le caractère est à la fin de la rangée précédente
+  byte largeur = (basStyle & BAS_ST_LARGE) ? 2 : 1;
+  if (basCol < largeur) {  // Le caractère est à la fin de la rangée précédente
     minitel.moveCursorUp(1);
-    minitel.moveCursorRight(39);
-    basCol = 39;
+    minitel.moveCursorRight(40 - largeur);
+    basCol = 40 - largeur;
   }
   else {
-    minitel.moveCursorLeft(1);
-    basCol--;
+    minitel.moveCursorLeft(largeur);
+    basCol -= largeur;
   }
   minitel.clearLineFromCursor();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-byte basReadLine(char* buf, byte maxLen)
+byte basReadLine(char* buf, byte maxLen, boolean garder)
 {
   // Saisie d'une ligne au clavier. Renvoie BAS_K_OK, BAS_K_QUITTER, BAS_K_ANNULER ou BAS_K_AIDE.
+  // Si garder est vrai, buf contient déjà un texte (EDIT) : il est affiché et peut être
+  // corrigé avec CORRECTION ou complété.
   byte n = 0;
   byte resultat = 0xFF;
-  buf[0] = 0;
+  if (garder) {
+    n = strlen(buf);
+    basPuts(buf);
+  }
+  else {
+    buf[0] = 0;
+  }
   minitel.cursor();
   while (resultat == 0xFF) {
     unsigned long k = minitel.getKeyCode();
@@ -693,60 +787,175 @@ void basGfxSet(int x, int y, boolean allume)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-void basGfxCell(int cx, int cy)
+byte basGfxPoints(int cx, int cy)
 {
-  // Affiche la case (cx de 0 à 39, cy de 0 à 23) avec ses 6 points
-  if (cx < 0 || cx > 39 || cy < 0 || cy > 23) return;
-  if (cx == 39 && cy == 23) return;  // Ecrire dans la dernière case ferait défiler l'écran
+  // Les 6 points de la case (cx, cy), du coin supérieur gauche (bit 5) au coin inférieur droit (bit 0)
   int x = cx * 2;
   int y = cy * 3;
-  byte points = 0;  // Du coin supérieur gauche (bit 5) au coin inférieur droit (bit 0)
+  byte points = 0;
   if (basGfxGet(x, y))         points |= 0b100000;
   if (basGfxGet(x + 1, y))     points |= 0b010000;
   if (basGfxGet(x, y + 1))     points |= 0b001000;
   if (basGfxGet(x + 1, y + 1)) points |= 0b000100;
   if (basGfxGet(x, y + 2))     points |= 0b000010;
   if (basGfxGet(x + 1, y + 2)) points |= 0b000001;
+  return points;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basGfxCell(int cx, int cy)
+{
+  // Affiche la case (cx de 0 à 39, cy de 0 à 23) avec ses 6 points
+  if (cx < 0 || cx > 39 || cy < 0 || cy > 23) return;
+  if (cx == 39 && cy == 23) return;  // Ecrire dans la dernière case ferait défiler l'écran
   minitel.moveCursorXY(cx + 1, cy + 1);
   minitel.graphicMode();
-  minitel.graphic(points);
+  minitel.graphic(basGfxPoints(cx, cy));
   minitel.textMode();
+  basRestoreAttr();
   basCol = (cx + 1) % 40;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basGfxMark(byte* cases, long x, long y, boolean allume)
+{
+  // Allume ou éteint un point et note sa case dans cases (960 bits : une par case de l'écran)
+  if (x < 0 || x >= BAS_GFX_W || y < 0 || y >= BAS_GFX_H) return;
+  basGfxSet((int) x, (int) y, allume);
+  unsigned int k = (unsigned int) (y / 3) * 40 + (unsigned int) (x / 2);
+  cases[k >> 3] |= (1 << (k & 7));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basGfxFlush(byte* cases)
+{
+  // Affiche les cases notées par basGfxMark, une seule fois chacune. Des cases qui se
+  // suivent sur une rangée sont envoyées à la suite, sans déplacer le curseur.
+  boolean graphique = false;
+  int suivante = -1;  // Case où se trouve le curseur
+  for (int k = 0; k < 960; k++) {
+    if (!(cases[k >> 3] & (1 << (k & 7)))) continue;
+    int cx = k % 40;
+    int cy = k / 40;
+    if (cx == 39 && cy == 23) continue;  // Ecrire dans la dernière case ferait défiler l'écran
+    if (k != suivante) minitel.moveCursorXY(cx + 1, cy + 1);
+    if (!graphique) {
+      minitel.graphicMode();
+      graphique = true;
+    }
+    minitel.graphic(basGfxPoints(cx, cy));
+    suivante = (cx == 39) ? -1 : k + 1;
+    basCol = (cx + 1) % 40;
+  }
+  if (graphique) {
+    minitel.textMode();
+    basRestoreAttr();
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basGfxBox(long x1, long y1, long x2, long y2, boolean allume, boolean plein)
+{
+  // BOX : rectangle de coins (x1, y1) et (x2, y2), plein ou non
+  byte cases[120];
+  memset(cases, 0, sizeof(cases));
+  if (x1 > x2) { long t = x1; x1 = x2; x2 = t; }
+  if (y1 > y2) { long t = y1; y1 = y2; y2 = t; }
+  long xa = (x1 < 0) ? 0 : x1;  // Limites dans l'écran, pour ne pas boucler pour rien
+  long xb = (x2 >= BAS_GFX_W) ? BAS_GFX_W - 1 : x2;
+  long ya = (y1 < 0) ? 0 : y1;
+  long yb = (y2 >= BAS_GFX_H) ? BAS_GFX_H - 1 : y2;
+  if (plein) {
+    for (long y = ya; y <= yb; y++) {
+      for (long x = xa; x <= xb; x++) basGfxMark(cases, x, y, allume);
+    }
+  }
+  else {
+    for (long x = xa; x <= xb; x++) {
+      basGfxMark(cases, x, y1, allume);
+      basGfxMark(cases, x, y2, allume);
+    }
+    for (long y = ya; y <= yb; y++) {
+      basGfxMark(cases, x1, y, allume);
+      basGfxMark(cases, x2, y, allume);
+    }
+  }
+  basGfxFlush(cases);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
 
 void basGfxLine(long x1, long y1, long x2, long y2, boolean allume)
 {
-  // Trace un segment (algorithme de Bresenham). Chaque case n'est affichée qu'une fois
-  // par passage, quand le tracé en sort.
+  // Trace un segment (algorithme de Bresenham). Chaque case touchée est affichée une fois.
+  byte cases[120];
+  memset(cases, 0, sizeof(cases));
   long dx = (x2 > x1) ? x2 - x1 : x1 - x2;
   long dy = (y2 > y1) ? y1 - y2 : y2 - y1;  // Négatif
   long sx = (x1 < x2) ? 1 : -1;
   long sy = (y1 < y2) ? 1 : -1;
   long ecart = dx + dy;
-  int caseX = -1;
-  int caseY = -1;
   while (true) {
-    if (x1 >= 0 && x1 < BAS_GFX_W && y1 >= 0 && y1 < BAS_GFX_H) {
-      basGfxSet((int) x1, (int) y1, allume);
-      int cx = (int) x1 / 2;
-      int cy = (int) y1 / 3;
-      if (cx != caseX || cy != caseY) {
-        if (caseX >= 0) basGfxCell(caseX, caseY);
-        caseX = cx;
-        caseY = cy;
-      }
-    }
+    basGfxMark(cases, x1, y1, allume);
     if (x1 == x2 && y1 == y2) break;
     long e2 = 2 * ecart;
     if (e2 >= dy) { ecart += dy; x1 += sx; }
     if (e2 <= dx) { ecart += dx; y1 += sy; }
   }
-  if (caseX >= 0) basGfxCell(caseX, caseY);
+  basGfxFlush(cases);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
+
+long basCircleHeight(long dx, long r)
+{
+  // Demi-hauteur, en points, de la colonne dx d'un cercle de rayon r (rayon vertical
+  // r x 1,25). Les rayons sont augmentés d'un demi-point pour un contour sans pointes.
+  float rx = r + 0.5;
+  float ry = r * 1.25 + 0.5;
+  float f = 1.0 - ((float) dx * dx) / (rx * rx);
+  if (f <= 0) return 0;
+  return (long) (ry * sqrt(f));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basGfxCircle(long xc, long yc, long r, boolean allume, boolean plein)
+{
+  // CIRCLE : cercle de centre (xc, yc) et de rayon r, plein ou non. Un point du Minitel
+  // est 1,25 fois plus large que haut : le rayon vertical vaut r x 1,25 pour que le
+  // cercle paraisse rond.
+  byte cases[120];
+  memset(cases, 0, sizeof(cases));
+  for (long dx = 0; dx <= r; dx++) {
+    long haut = basCircleHeight(dx, r);
+    // Pour le contour, chaque colonne descend jusqu'à la hauteur de sa voisine extérieure :
+    // le tracé n'a pas de trou, même là où il est presque vertical
+    long bas = 0;
+    if (!plein && dx < r) {
+      bas = basCircleHeight(dx + 1, r) + 1;
+      if (bas > haut) bas = haut;
+    }
+    if (yc - haut < 0 && yc + haut >= BAS_GFX_H && plein) {  // Colonne plus haute que l'écran
+      bas = 0;
+    }
+    for (long dy = bas; dy <= haut; dy++) {
+      if (yc + dy >= 0 && yc - dy < BAS_GFX_H) {
+        basGfxMark(cases, xc + dx, yc + dy, allume);
+        basGfxMark(cases, xc - dx, yc + dy, allume);
+        basGfxMark(cases, xc + dx, yc - dy, allume);
+        basGfxMark(cases, xc - dx, yc - dy, allume);
+      }
+    }
+  }
+  basGfxFlush(cases);
+}
+
+//////
 
 void basGfxClear()
 {
@@ -2156,7 +2365,7 @@ void basInput()
     while (!correct) {
       basPuts("? ");
       basKey = 0;
-      byte r = basReadLine(basInBuf, BAS_STR_MAX);
+      byte r = basReadLine(basInBuf, BAS_STR_MAX, false);
       basNewLine();
       if (r == BAS_K_QUITTER || r == BAS_K_ANNULER) { basErr = BAS_E_BREAK; return; }
       if (chaine) {
@@ -2730,35 +2939,47 @@ void basStatement()
     }
   }
   else if (BAS_KW("CLS")) {
-    minitel.newScreen();
+    minitel.newScreen();  // Le Minitel revient aussi à l'affichage normal
     basCol = 0;
     basGfxClear();
+    basInk = 7;
+    basPaper = 0;
+    basStyle = 0;
   }
-  else if (BAS_KW("PLOT") || BAS_KW("LINE")) {
-    boolean segment = (debut[1] == 'I');  // PLOT ou LINE
-    if (segment && BAS_KW("INPUT")) { basFileInput(true); return; }  // LINE INPUT #n, A$
+  else if (BAS_KW("PLOT") || BAS_KW("LINE") || BAS_KW("BOX") || BAS_KW("CIRCLE")) {
+    char genre = debut[0];  // 'P' : PLOT, 'L' : LINE, 'B' : BOX, 'C' : CIRCLE
+    if (genre == 'L' && BAS_KW("INPUT")) { basFileInput(true); return; }  // LINE INPUT #n, A$
     long c[4];
-    byte n = segment ? 4 : 2;
+    byte n = (genre == 'P') ? 2 : (genre == 'C') ? 3 : 4;
     for (byte i = 0; i < n && basErr == 0; i++) {
       if (i > 0) basExpect(',');
       float v = basExpr();
       if (v < -1000 || v > 1000) { if (basErr == 0) basErr = BAS_E_VALEUR; }
       c[i] = (long) v;
     }
-    boolean allume = true;
+    boolean allume = true;   // Paramètre facultatif : 0 pour éteindre
+    boolean plein = false;   // BOX et CIRCLE : 1 pour une figure pleine
     basSkip();
-    if (basErr == 0 && *basP == ',') {  // Dernier paramètre facultatif : 0 pour éteindre
+    if (basErr == 0 && *basP == ',') {
       basP++;
       allume = (basExpr() != 0);
+      basSkip();
+      if (basErr == 0 && *basP == ',' && (genre == 'B' || genre == 'C')) {
+        basP++;
+        plein = (basExpr() != 0);
+      }
     }
     if (basErr) return;
-    if (segment) {
-      basGfxLine(c[0], c[1], c[2], c[3], allume);
+    if (genre == 'C' && c[2] < 0) { basErr = BAS_E_VALEUR; return; }
+    if (genre == 'P') {
+      if (c[0] >= 0 && c[0] < BAS_GFX_W && c[1] >= 0 && c[1] < BAS_GFX_H) {
+        basGfxSet((int) c[0], (int) c[1], allume);
+        basGfxCell((int) c[0] / 2, (int) c[1] / 3);
+      }
     }
-    else if (c[0] >= 0 && c[0] < BAS_GFX_W && c[1] >= 0 && c[1] < BAS_GFX_H) {
-      basGfxSet((int) c[0], (int) c[1], allume);
-      basGfxCell((int) c[0] / 2, (int) c[1] / 3);
-    }
+    else if (genre == 'L') basGfxLine(c[0], c[1], c[2], c[3], allume);
+    else if (genre == 'B') basGfxBox(c[0], c[1], c[2], c[3], allume, plein);
+    else basGfxCircle(c[0], c[1], c[2], allume, plein);
   }
   else if (BAS_KW("LOCATE")) {
     long x = (long) basExpr();
@@ -2769,18 +2990,56 @@ void basStatement()
     minitel.moveCursorXY((int) x, (int) y);
     basCol = (byte) (x - 1);
   }
-  else if (BAS_KW("COLOR")) {
+  else if (BAS_KW("COLOR") || BAS_KW("PAPER") || BAS_KW("SIZE")) {
+    char genre = debut[0];  // 'C' : COLOR, 'P' : PAPER, 'S' : SIZE
     long n = (long) basExpr();
     if (basErr) return;
-    if (n < 0 || n > 7) { basErr = BAS_E_VALEUR; return; }
-    minitel.attributs(CARACTERE_NOIR + (byte) n);  // 0 noir, 1 rouge, 2 vert, 3 jaune, 4 bleu, 5 magenta, 6 cyan, 7 blanc
+    if (n < 0 || n > ((genre == 'S') ? 3 : 7)) { basErr = BAS_E_VALEUR; return; }
+    if (genre == 'C') {
+      minitel.attributs(CARACTERE_NOIR + (byte) n);  // 0 noir, 1 rouge, 2 vert, 3 jaune, 4 bleu, 5 magenta, 6 cyan, 7 blanc
+      basInk = (byte) n;
+    }
+    else if (genre == 'P') {
+      minitel.attributs(FOND_NOIR + (byte) n);  // Pris en compte au prochain espace (attribut de zone)
+      basPaper = (byte) n;
+    }
+    else {
+      // 0 normale, 1 double hauteur, 2 double largeur, 3 double taille. Pour passer en
+      // double hauteur, minitel.attributs() descend le curseur d'une rangée : le texte
+      // occupe alors la rangée de départ et la suivante.
+      boolean hautAvant = (basStyle & BAS_ST_HAUT);
+      boolean haut = (n & 1);
+      if (haut && !hautAvant) minitel.attributs(GRANDEUR_NORMALE + (byte) n);
+      else basEsc(GRANDEUR_NORMALE + (byte) n);
+      basStyle = (basStyle & 0x0F) | ((byte) n << 4);
+    }
     basAttr = true;
   }
-  else if (BAS_KW("INVERSE")) {
+  else if (BAS_KW("INVERSE") || BAS_KW("FLASH") || BAS_KW("UNDERLINE")) {
+    char genre = debut[0];  // 'I' : INVERSE, 'F' : FLASH, 'U' : UNDERLINE
     long n = (long) basExpr();
     if (basErr) return;
-    minitel.attributs((n != 0) ? INVERSION_FOND : FOND_NORMAL);
+    byte bit = (genre == 'I') ? BAS_ST_INVERSE : (genre == 'F') ? BAS_ST_FLASH : BAS_ST_SOULIGNE;
+    if (genre == 'I') minitel.attributs((n != 0) ? INVERSION_FOND : FOND_NORMAL);
+    else if (genre == 'F') minitel.attributs((n != 0) ? CLIGNOTEMENT : FIXE);
+    else minitel.attributs((n != 0) ? DEBUT_LIGNAGE : FIN_LIGNAGE);  // Au prochain espace (attribut de zone)
+    if (n != 0) basStyle |= bit;
+    else basStyle &= ~bit;
     basAttr = true;
+  }
+  else if (BAS_KW("EDIT")) {
+    // Prépare la ligne n pour la prochaine saisie : elle sera affichée dans la zone de
+    // saisie, où l'on peut la corriger avant de la valider avec ENVOI
+    unsigned int num = basLineArg();
+    if (basErr) return;
+    byte* p = basFindLine(num);
+    if (p >= basProgEnd() || basLineNum(p) != num) { basErr = BAS_E_LIGNE; basErrLigne = num; return; }
+    char* fin = basUtoa(num, basInBuf);
+    *fin++ = ' ';
+    if ((fin - basInBuf) + strlen((char*) (p + 3)) > BAS_LINE_MAX) { basErr = BAS_E_LONGUE; return; }
+    strcpy(fin, (char*) (p + 3));
+    basEditPending = true;
+    basStop = true;
   }
   else if (BAS_KW("BEEP")) minitel.bip();
   else if (BAS_KW("SOUND")) {
@@ -2900,7 +3159,10 @@ void basic()
 
   boolean fin = false;
   while (!fin) {
-    byte r = basReadLine(basLine, BAS_LINE_MAX);
+    boolean edition = basEditPending;  // EDIT n : la ligne à corriger est dans basInBuf
+    basEditPending = false;
+    if (edition) strcpy(basLine, basInBuf);
+    byte r = basReadLine(basLine, BAS_LINE_MAX, edition);
     if (r == BAS_K_QUITTER) {
       fin = true;
     }
@@ -2933,12 +3195,9 @@ void basic()
         basRun();
         if (basErr) basPrintError();
         if (basCur != NULL) basCloseAll();  // Un programme s'est arrêté (fin, erreur...) : ses fichiers sont fermés
-        if (basAttr) {  // On revient à l'affichage normal
-          minitel.attributs(CARACTERE_BLANC);
-          minitel.attributs(FOND_NORMAL);
-        }
+        if (basAttr) basResetAttr();  // On revient à l'affichage normal
         if (basCol != 0) basNewLine();
-        basPutsP(PSTR("Ok\n"));
+        if (!basEditPending) basPutsP(PSTR("Ok\n"));  // Après EDIT, la ligne à corriger s'affiche aussitôt
       }
     }
   }
