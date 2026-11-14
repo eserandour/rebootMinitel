@@ -19,7 +19,7 @@ def compiler(forcer=False):
     a_jour = os.path.exists(SIMULATEUR) and os.path.getmtime(SIMULATEUR) >= max(
         os.path.getmtime(BASIC), *(os.path.getmtime(os.path.join(ICI, f)) for f in ('simulateur.cpp', 'imitations.h')))
     if forcer or not a_jour:
-        subprocess.run([os.path.join(ICI, 'compiler.sh')], check=True)
+        subprocess.run(['sh', os.path.join(ICI, 'compiler.sh')], check=True)
 
 
 def executer(touches, sd, limite=None, interactif=False):

@@ -6,7 +6,7 @@ Le simulateur compile le **vrai `Basic.ino`** du croquis avec un compilateur C++
 
 | Matériel | Dans le simulateur |
 |---|---|
-| Minitel | un écran de 40 × 24 cases en mode rouleau (texte, couleurs, vidéo inverse, semi-graphiques, défilement) |
+| Minitel | un écran de 40 × 24 cases en mode rouleau : texte, couleurs, fond, vidéo inverse, soulignement, clignotement, double hauteur et largeur, semi-graphiques, défilement. Les règles sont celles du STUM 1B : fond et soulignement validés par un espace (attributs de zone), double hauteur dessinée vers le haut et sans effet sur la rangée 1, taille, inversion et soulignement annulés par le semi-graphique |
 | Clavier | un script de touches, ou le terminal en mode interactif |
 | Horloge DS3231 | le 14/11/2026 à 10:30:00 au lancement, puis le temps simulé |
 | Temps (`millis`) | avance d'une milliseconde à chaque instruction : `PAUSE`, `TIMER`, `TIME$` restent cohérents |
@@ -75,7 +75,8 @@ Le fichier contient exactement ce que l'on taperait au clavier du Minitel.
 |---|---|
 | texte ordinaire | tapé quand reBASIC attend une ligne (`INPUT`, invite `Ok`) |
 | `\n` (dans `-t`) ou un retour à la ligne | **ENVOI** |
-| `{ENVOI}` `{ANNUL}` `{SOMM}` `{SUITE}` `{RETOUR}` `{GUIDE}` `{CORR}` | touches de fonction |
+| `{ENVOI}` `{ANNUL}` `{SOMM}` `{SUITE}` `{RETOUR}` | touches de fonction, frappées à tout moment |
+| `{CORR}` `{GUIDE}` | CORRECTION et GUIDE, frappées quand reBASIC attend une ligne |
 | `{k:x}` | la touche `x`, frappée même pendant l'exécution (pour `INKEY$`) |
 | `{WAIT:n}` | `n` millisecondes sans toucher au clavier |
 | `{CLR}` | efface l'écran simulé (pour une image plus nette) |
@@ -98,4 +99,4 @@ Les dossiers `build/` et `carte_sd/` sont créés à l'utilisation.
 
 ## Fidélité
 
-Ce qui s'affiche, et où, est exact : c'est le code de reBASIC qui tourne, et l'écran simulé suit les règles du Minitel (curseur, retour à la ligne, défilement). En revanche, la police n'est pas celle du Minitel, les niveaux de gris sont approximatifs, et la vitesse est simulée (une instruction par milliseconde ; le vrai Mega est un peu plus rapide ou plus lent selon les instructions).
+Ce qui s'affiche, et où, est exact : c'est le code de reBASIC qui tourne, et l'écran simulé suit les règles du Minitel (curseur, retour à la ligne, défilement). En revanche, la police n'est pas celle du Minitel (les cases ont toutefois ses proportions, 8 × 10), les niveaux de gris sont approximatifs, le clignotement est montré fixe dans les images (il clignote en mode interactif, si le terminal le permet), et la vitesse est simulée (une instruction par milliseconde ; le vrai Mega est un peu plus rapide ou plus lent selon les instructions).

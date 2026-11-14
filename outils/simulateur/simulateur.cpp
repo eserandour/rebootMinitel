@@ -48,8 +48,8 @@ void ajouterTouches(const std::string& t)
       else if (m == "SUITE") k.code = SUITE;
       else if (m == "RETOUR") k.code = RETOUR;
       else if (m == "ENVOI") k.code = ENVOI;
-      else if (m == "GUIDE") k.code = GUIDE;
-      else if (m == "CORR") k.code = CORRECTION;
+      else if (m == "GUIDE") { k.code = GUIDE; k.toujours = false; }      // Tapées pendant une saisie
+      else if (m == "CORR") { k.code = CORRECTION; k.toujours = false; }
       else if (m == "CLR") k.special = 1;
       else if (m == "SNAP") k.special = 2;
       else if (m.rfind("WAIT:", 0) == 0) { k.special = 3; k.code = atol(m.c_str() + 5); }
@@ -98,10 +98,11 @@ void afficherTerminal()
     s += "│";
     for (int j = 0; j < 40; j++) {
       Case& x = minitel.ecran[i][j];
-      char col[32];
-      snprintf(col, sizeof col, "\033[38;5;%dm%s", gris[x.couleur & 7], x.inverse ? "\033[7m" : "");
+      char col[64];
+      snprintf(col, sizeof col, "\033[38;5;%dm\033[48;5;%dm%s%s%s", gris[x.couleur & 7], x.fond ? gris[x.fond & 7] : 16,
+               x.inverse ? "\033[7m" : "", x.souligne ? "\033[4m" : "", x.clignote ? "\033[5m" : "");
       s += col;
-      s += x.graphique ? sextant(x.points) : x.car;
+      s += x.couverte ? std::string(" ") : x.graphique ? sextant(x.points) : x.car;
       s += "\033[0m";
     }
     s += "│\n";
@@ -127,7 +128,8 @@ void capture(bool forcer)
   for (int i = 0; i < 24; i++) {
     for (int j = 0; j < 40; j++) {
       Case& x = minitel.ecran[i][j];
-      fprintf(f, "%d\t%d\t%d\t%d\t%d\t%d\t%s\n", i, j, x.couleur, x.inverse ? 1 : 0, x.graphique ? 1 : 0, x.points, x.car.c_str());
+      fprintf(f, "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n", i, j, x.couleur, x.inverse ? 1 : 0, x.graphique ? 1 : 0, x.points,
+              x.fond, x.souligne ? 1 : 0, x.clignote ? 1 : 0, x.taille, x.couverte ? 1 : 0, x.car.c_str());
     }
   }
   fprintf(f, "CURSEUR\t%d\t%d\nBIPS\t%d\nJOURNAL\t%s\n", minitel.r, minitel.c, g_bips, g_journal.c_str());
