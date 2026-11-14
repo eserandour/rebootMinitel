@@ -2,6 +2,8 @@
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
+reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED ou un relais, faire varier une luminosité (MLI), lire un bouton ou un interrupteur, mesurer une tension sur une entrée analogique (potentiomètre, capteur de lumière ou de température…). Le Minitel devient ainsi l'écran et le clavier de petites expériences d'électronique, programmées en BASIC.
+
 Copyright 2023-2026 — Eric Sérandour — Logiciel libre sous licence [GNU GPLv3](LICENSE).
 Site : <https://entropie.org/3615>
 
@@ -76,6 +78,8 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 ## reBASIC
 
 Un petit interpréteur BASIC dans l'esprit des BASIC des années 80, adapté au Minitel : 40 colonnes, écran qui défile, touches de fonction, lettres accentuées, couleurs de fond, double taille, caractères semi-graphiques. Les programmes sont enregistrés sur la carte SD.
+
+Il commande aussi les broches libres de l'Arduino : sorties numériques (`DWRITE`) et MLI (`AWRITE`), entrées numériques avec ou sans résistance de tirage (`DREAD`), entrées analogiques de 0 à 1023 (`AREAD`). Les broches utilisées par le Minitel, la carte SD, l'horloge et le buzzer sont protégées. Voir [Broches de l'Arduino](#broches-de-larduino).
 
 Pour apprendre à programmer en reBASIC, pas à pas et avec de nombreux exemples : le tutoriel **[Programmer en reBASIC](Tutoriel_reBASIC.pdf)** (aussi en [ODT](Tutoriel_reBASIC.odt)).
 
