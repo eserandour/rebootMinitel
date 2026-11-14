@@ -3,7 +3,7 @@
    rebootMinitel
    Copyright 2023-2026 - Eric Sérandour
 */
-   const String VERSION = "2026.11.14c";  // 15h24
+   const String VERSION = "2026.11.14d";  // 18h30
 /*
    
    This program is free software: you can redistribute it and/or modify
@@ -75,8 +75,11 @@
 
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)  // Pour ESP32
 // Le troisième port série matériel de l'ESP32 (Serial2 / U2RXD U2TXD)
-// est utilisé pour la connexion avec le Minitel.
-Minitel minitel(Serial2);
+// est utilisé pour la connexion avec le Minitel : RX2 = GPIO16, TX2 = GPIO17.
+// Les broches doivent être précisées : depuis la version 3.0 de la carte esp32
+// d'Espressif Systems, Serial2 utilise par défaut GPIO4 (RX) et GPIO25 (TX).
+// Sans elles, le Minitel ne répond jamais et searchSpeed() attend sans fin.
+Minitel minitel(Serial2, 16, 17);  // Port série, broche RX, broche TX
 #else  // Pour ATmega 1284P ou ATmega 2560 notamment
 // Le deuxième port série matériel de l'ATMega (Serial1 / RXD1 TXD1)
 // est utilisé pour la connexion avec le Minitel.
@@ -94,7 +97,11 @@ char Heure[9];   // "hh:mm:ss"
 
 // *** Carte SD
 #include <SD.h>
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+const byte CHIP_SELECT = 5;    // Chip Select de la carte SD pour l'ESP32 (SS du bus VSPI ; à adapter au montage)
+#else
 const byte CHIP_SELECT = 53;   // Chip Select de la carte SD pour l'Arduino Mega
+#endif
 File dataFile;
 
 // *** Buzzer

@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
-// À PROPOS
+// À PROPOS (LOGICIEL / AUTEUR)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
@@ -14,7 +14,7 @@ void aPropos()
   minitel.moveCursorXY(x, 9);
   minitel.print(texte);
   
-  texte = F("Auteur : Eric Sérandour");
+  texte = F("Un projet d'Eric Sérandour");
   minitel.moveCursorXY(x, 11);
   minitel.print(texte);
 

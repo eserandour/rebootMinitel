@@ -13,6 +13,23 @@ unsigned long horlogeLecture = 0;    // Moment de la dernière lecture de l'horl
 void initHorloge()
 {
   horlogeOK = rtc.begin();
+  if (horlogeOK) {
+    if (rtc.lostPower()) {
+      Serial.println(F("RTC lost power, lets set the time!"));
+      // following line sets the RTC to the date & time this sketch was compiled
+      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+      // This line sets the RTC with an explicit date & time, for example to set
+      // January 21, 2014 at 3am you would call:
+      // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    }
+    if (!testHorloge()) {
+      rtc.adjust(DateTime(2000,1,1,0,0,0));
+      // Si l'heure lue reste incohérente, ce n'est pas une horloge qui répond : rtc.begin()
+      // peut réussir sans horloge (bus I2C sans résistances de tirage, autre composant à
+      // l'adresse 0x68...). Les octets lus valent alors 0xFF, ce qui donne 165/165/2165.
+      horlogeOK = testHorloge();
+    }
+  }
   if (!horlogeOK) {
     // Pas d'horloge : on le signale sur le Minitel et le programme continue sans elle
     Serial.println(F("Couldn't find RTC"));
@@ -20,21 +37,6 @@ void initHorloge()
     minitel.print(F("Horloge introuvable"));
     bipErreur();
     delay(3000);
-    return;
-  }
-
-  if (rtc.lostPower()) {
-    Serial.println(F("RTC lost power, lets set the time!"));
-    // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2014 at 3am you would call:
-    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-  }
-
-  // Pas nécessairement utile mais on prend toutes les précautions
-  if (!testHorloge()) {
-    rtc.adjust(DateTime(2000,1,1,0,0,0));
   }
 }
 
