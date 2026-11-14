@@ -7,7 +7,6 @@ Grâce à la **carte SD** du shield, reBASIC enregistre et recharge les programm
 reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED ou un relais, faire varier une luminosité (MLI), lire un bouton ou un interrupteur, mesurer une tension sur une entrée analogique (potentiomètre, capteur de lumière ou de température…). Le Minitel devient ainsi l'écran et le clavier de petites expériences d'électronique, programmées en BASIC.
 
 <img src="photos/1000011731.jpg" height="600">
-<img src="https://entropie.org/3615/wp-content/uploads/2023/08/IMG20230817123209-3400x3000b-scaled.jpg" alt="Shield 3616 Mega" width="400">
 
 Copyright 2023-2026 — Eric Sérandour — Logiciel libre sous licence [GNU GPLv3](LICENSE).
 Site : <https://entropie.org/3615>
