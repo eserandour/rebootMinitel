@@ -17,7 +17,7 @@ C2 : Condensateur non polarisé 330nF.
 C3 : Condensateur non polarisé 100nF.
 C4 : Condensateur chimique polarisé à sorties radiales 10µF/25V.
 Bouton poussoir pour circuit imprimé.
-Buzzer passif 5V. => E-bay
+Buzzer passif 5V.
 5 connecteurs 1×8 broches femelles à pattes longues (11 mm) pour Arduino.
 1 connecteur 1×10 broches femelles à pattes longues (11 mm) pour Arduino.
 1 connecteur 2×18 broches femelles à pattes longues (11 mm) pour Arduino.
