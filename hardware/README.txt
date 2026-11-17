@@ -1,2 +1,2 @@
-Fichier Fritzing
+.fzz : fichier Fritzing
 https://fritzing.org
