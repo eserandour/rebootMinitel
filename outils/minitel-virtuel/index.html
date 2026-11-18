@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>reBASIC — Minitel virtuel</title>
+<style>
+  :root {
+    --plastique: #cfc6b4;
+    --plastique-fonce: #a89d87;
+    --encre: #2b2620;
+    --papier: #f4efe4;
+    --accent: #8c3b1f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--papier);
+    color: var(--encre);
+    font: 16px/1.5 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  header {
+    padding: 28px 24px 8px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  h1 {
+    font: 700 30px/1.1 ui-monospace, "DejaVu Sans Mono", Menlo, monospace;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+  }
+  h1 span { color: var(--accent); }
+  header p { margin: 0; max-width: 68ch; }
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 18px 24px 40px;
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(300px, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  @media (max-width: 1080px) { main { grid-template-columns: 1fr; } }
+
+  /* Le boîtier du Minitel */
+  .boitier {
+    background: linear-gradient(170deg, #6e5244, #5a4135 45%, #4c362c);
+    border-radius: 26px 26px 18px 18px;
+    padding: 26px 26px 18px;
+    box-shadow: 0 1px 0 #ffffff22 inset, 0 22px 44px -18px #2a1d16cc;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    max-width: 100%;
+  }
+  .marque {
+    align-self: stretch;
+    display: flex;
+    justify-content: space-between;
+    font: 600 11px/1 system-ui, sans-serif;
+    letter-spacing: .25em;
+    color: #cdb9a8;
+    text-transform: uppercase;
+  }
+
+  .panneau h2 {
+    font: 700 13px/1 system-ui, sans-serif;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    margin: 0 0 10px;
+    color: #6d6457;
+  }
+  .ligne { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  select, button.action {
+    font: 600 14px/1 system-ui, sans-serif;
+    padding: 9px 12px;
+    border-radius: 6px;
+    border: 1px solid #b3a892;
+    background: #fff;
+    color: var(--encre);
+  }
+  button.action { cursor: pointer; background: var(--encre); color: var(--papier); border-color: var(--encre); }
+  button.action.secondaire { background: #fff; color: var(--encre); border-color: #b3a892; }
+  button.action:hover { filter: brightness(1.15); }
+  textarea#source {
+    width: 100%;
+    min-height: 330px;
+    resize: vertical;
+    font: 14px/1.45 ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid #b3a892;
+    background: #fffdf8;
+    color: var(--encre);
+    tab-size: 4;
+  }
+  .reglages { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; font: 14px system-ui, sans-serif; margin-top: 14px; }
+  .reglages label { color: #5a5247; }
+  .aide-clavier { font: 13px/1.6 system-ui, sans-serif; color: #5a5247; margin-top: 16px; }
+  kbd {
+    font: 600 11px/1 ui-monospace, monospace;
+    background: #fff;
+    border: 1px solid #b3a892;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 2px 5px;
+  }
+  .note { font: 13px/1.5 system-ui, sans-serif; color: #5a5247; background: #fffaf0; border: 1px solid #e3d6bd; border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; max-width: 62ch; }
+  .etat { font: 13px system-ui, sans-serif; color: var(--accent); min-height: 1.4em; }
+  footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 40px; font: 13px system-ui, sans-serif; color: #6d6457; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>re<span>BASIC</span> — Minitel virtuel</h1>
+  <p>rebootMinitel et son BASIC, dans le navigateur. Tapez <strong>1</strong> pour entrer dans reBASIC, avec le clavier de votre ordinateur ou celui du Minitel, ou choisissez un programme dans la liste et lancez-le. <span style="white-space:nowrap">SOMMAIRE</span> ramène au menu.</p>
+</header>
+
+<main>
+  <div class="boitier">
+    <div class="marque"><span>rebootMinitel</span><span>reBASIC</span></div>
+    <div id="minitel"></div>
+  </div>
+
+  <section class="panneau">
+    <h2>Programme</h2>
+    <div class="ligne">
+      <select id="exemples" aria-label="Exemples"></select>
+      <button class="action" id="lancer">Charger et lancer</button>
+      <button class="action secondaire" id="charger">Charger</button>
+      <button class="action secondaire" id="arreter">Arrêter</button>
+      <button class="action secondaire" id="recuperer">Récupérer le programme</button>
+    </div>
+    <div class="ligne">
+      <button class="action secondaire" id="ouvrir">Ouvrir…</button>
+      <button class="action secondaire" id="enregistrer">Enregistrer&nbsp;sous…</button>
+    </div>
+    <p class="note" id="note-enregistrer" hidden></p>
+    <textarea id="source" spellcheck="false" aria-label="Programme reBASIC"></textarea>
+    <div class="etat" id="etat"></div>
+
+    <div class="reglages">
+      <label for="carte">Carte</label>
+      <select id="carte">
+        <option value="mega" selected>Arduino Mega (2048 octets)</option>
+        <option value="esp32">ESP32 (16384 octets)</option>
+      </select>
+      <label for="vitesse">Liaison</label>
+      <select id="vitesse">
+        <option value="1200">1200 bauds</option>
+        <option value="4800" selected>4800 bauds (rebootMinitel)</option>
+        <option value="9600">9600 bauds</option>
+        <option value="0">Instantanée</option>
+      </select>
+      <label for="instructions">Vitesse du BASIC</label>
+      <select id="instructions">
+        <option value="1000" selected>1000 instructions/s (Arduino Mega)</option>
+        <option value="5000">5000 instructions/s</option>
+        <option value="0">Maximale</option>
+      </select>
+      <label for="couleurs">Écran</label>
+      <select id="couleurs">
+        <option value="0" selected>Minitel 1B (niveaux de gris)</option>
+        <option value="1">Couleurs</option>
+      </select>
+    </div>
+
+    <div class="aide-clavier">
+      <kbd>Entrée</kbd> ENVOI · <kbd>⌫</kbd> CORRECTION · <kbd>Échap</kbd> ANNULATION ·
+      <kbd>F1</kbd> GUIDE · <kbd>F2</kbd> SOMMAIRE · <kbd>F3</kbd> RÉPÉTITION ·
+      <kbd>Page ↓</kbd> SUITE · <kbd>Page ↑</kbd> RETOUR · <kbd>^</kbd> puissance
+    </div>
+  </section>
+</main>
+
+<footer>
+  reBASIC et rebootMinitel&nbsp;: <a href="https://github.com/eserandour/rebootMinitel">github.com/eserandour/rebootMinitel</a>.
+  Les programmes enregistrés avec <code>SAVE</code> restent dans ce navigateur.
+</footer>
+
+<script src="rebasic.js"></script>
+<script>
+const EXEMPLES = {
+  'La maison': `10 CLS
+20 PAPER 4: BOX 0, 0, 79, 44, 0, 1
+30 PAPER 2: BOX 0, 45, 79, 71, 0, 1
+40 COLOR 3: PAPER 4: CIRCLE 62, 14, 7, 1, 1
+50 COLOR 7: PAPER 2: BOX 12, 33, 35, 62, 1, 1
+60 COLOR 1: BOX 20, 45, 27, 62, 1, 1
+70 GOTO 70`,
+  'La balle qui rebondit': `10 CLS: X = 5: Y = 5: U = 1: V = 1
+20 BOX 0, 0, 79, 68
+30 PLOT X, Y, 0
+40 X = X + U: Y = Y + V
+50 IF X <= 1 OR X >= 78 THEN U = -U
+60 IF Y <= 1 OR Y >= 67 THEN V = -V
+70 PLOT X, Y
+80 GOTO 30`,
+  'Le serpent': `10 CLS: X = 40: Y = 36: U = 1: V = 0: N = 0
+20 R = RND(8)
+30 IF R = 1 THEN W = U: U = V: V = -W
+40 IF R = 2 THEN W = U: U = -V: V = W
+50 X = X + U: Y = Y + V
+60 IF X < 0 OR X > 79 OR Y < 0 OR Y > 70 THEN 90
+70 IF POINT(X, Y) THEN 90
+80 PLOT X, Y: N = N + 1: GOTO 20
+90 LOCATE 1, 1: PRINT N; " pas.";
+100 GOTO 100`,
+  'Cercles': `10 CLS
+20 BOX 2, 3, 30, 30
+30 BOX 8, 9, 24, 24, 1, 1
+40 CIRCLE 56, 18, 13
+50 CIRCLE 56, 18, 5, 1, 1
+60 BOX 40, 46, 76, 69
+70 CIRCLE 50, 57, 6: CIRCLE 66, 57, 6, 1, 1
+80 GOTO 80`,
+  'Le pendu': `10 CLS: RESTORE: N = RND(5)
+20 FOR I = 1 TO N: READ M$: NEXT
+30 L = LEN(M$): T$ = "": E = 0
+40 FOR I = 1 TO L: T$ = T$ + "-": NEXT
+50 PRINT: PRINT T$; "   erreurs : "; E; "/7"
+60 IF T$ = M$ THEN PRINT "Gagné !": END
+70 IF E = 7 THEN PRINT "Perdu, c'était "; M$: END
+80 INPUT "Lettre"; C$: C$ = UPPER$(LEFT$(C$, 1))
+90 IF INSTR(M$, C$) = 0 THEN E = E + 1: GOTO 50
+100 FOR I = 1 TO L
+110 IF MID$(M$, I, 1) = C$ THEN GOSUB 200
+120 NEXT: GOTO 50
+200 T$ = LEFT$(T$, I - 1) + C$ + MID$(T$, I + 1): RETURN
+300 DATA MINITEL, ARDUINO, CLAVIER, MODEM, ECRAN`,
+  'Le nombre mystère': `10 CLS: PRINT "J'ai choisi un nombre"
+15 PRINT "entre 1 et 100."
+20 M = RND(100): C = 0
+30 INPUT "Ta proposition"; P
+40 C = C + 1
+50 IF P < M THEN PRINT "C'est plus.": GOTO 30
+60 IF P > M THEN PRINT "C'est moins.": GOTO 30
+70 PRINT "Gagné en "; C; " coups !"`,
+  'Minitel Matin': `10 CLS: INVERSE 1: PRINT " MINITEL MATIN"; TAB(40): INVERSE 0
+20 LOCATE 11, 4: SIZE 3: PRINT "IL NEIGE !": SIZE 0
+30 LOCATE 14, 7: SIZE 2: PRINT "Partout": SIZE 0
+40 LOCATE 1, 10: UNDERLINE 1: PRINT " La météo du jour": UNDERLINE 0
+50 PRINT: COLOR 6: PRINT " Matin : -3°C"
+60 COLOR 3: PRINT " Après-midi : 1°C": COLOR 7
+70 LOCATE 1, 16: PAPER 4: PRINT " Routes glissantes"; TAB(40)
+80 PAPER 0: LOCATE 13, 20: FLASH 1: PRINT "DERNIERE MINUTE": FLASH 0
+90 GOTO 90`,
+  'Pages SUITE / RETOUR': `10 P = 1
+20 CLS: PRINT "Page "; P; " sur 3"
+30 PRINT: PRINT "SUITE : page suivante"
+40 PRINT "RETOUR : page précédente"
+50 PRINT "ENVOI : fin"
+60 K = KEY: IF K = 0 THEN 60
+70 IF K = 4936 AND P < 3 THEN P = P + 1: GOTO 20
+80 IF K = 4930 AND P > 1 THEN P = P - 1: GOTO 20
+90 IF K <> 4929 THEN 60
+100 CLS: PRINT "Au revoir"`,
+  "L'horloge": `10 CLS: LOCATE 16, 11: PRINT DATE$
+20 LOCATE 17, 13: PRINT TIME$;
+30 PAUSE 200: GOTO 20`,
+  'Au clair de la lune': `10 REM Au clair de la lune
+20 READ F, D
+30 IF F = 0 THEN END
+40 SOUND F, D: PAUSE 30
+50 GOTO 20
+100 DATA 262,400,262,400,262,400,294,400
+110 DATA 330,800,294,800,262,400,330,400
+120 DATA 294,400,294,400,262,1200,0,0`
+};
+
+const $ = (id) => document.getElementById(id);
+const select = $('exemples'), source = $('source'), etat = $('etat');
+for (const nom of Object.keys(EXEMPLES).sort((a, b) => a.localeCompare(b, 'fr'))) select.add(new Option(nom, nom));
+source.value = EXEMPLES[select.value];
+select.addEventListener('change', () => { source.value = EXEMPLES[select.value]; });
+
+let minitel = null;
+function construire() {
+  const programme = minitel ? minitel.programme() : '';
+  if (minitel) minitel.detruire();
+  minitel = ReBASIC.creer($('minitel'), {
+    vitesse: Number($('vitesse').value),
+    instructions: Number($('instructions').value),
+    couleurs: $('couleurs').value === '1',
+    clavierVirtuel: true,
+    clavierPage: true,
+    carte: $('carte').value
+  });
+  if (programme) {
+    try { minitel.charger(programme); }
+    catch (e) { etat.textContent = 'Le programme ne tient pas dans la mémoire de cette carte.'; }
+  }
+  minitel.focus();
+}
+construire();
+for (const id of ['carte', 'vitesse', 'instructions', 'couleurs']) $(id).addEventListener('change', construire);
+
+function charger() {
+  try {
+    minitel.charger(source.value);
+    etat.textContent = '';
+    return true;
+  }
+  catch (e) {
+    etat.textContent = e.message;
+    return false;
+  }
+}
+$('lancer').addEventListener('click', () => { if (charger()) { minitel.executer('CLS: RUN', { echo: false }); minitel.focus(); } });
+$('charger').addEventListener('click', () => { if (charger()) { minitel.executer('LIST'); minitel.focus(); } });
+$('arreter').addEventListener('click', () => { minitel.arreter(); minitel.focus(); });
+$('recuperer').addEventListener('click', () => { source.value = minitel.programme(); });
+
+// Fichiers de l'ordinateur : même format que SAVE sur la carte SD du Minitel
+let nomFichier = 'PROGRAMME.BAS';
+const note = $('note-enregistrer');
+if (ReBASIC.dansUnCadre()) {
+  note.hidden = false;
+  note.textContent = 'Cette page est affichée dans un cadre, qui empêche de choisir le dossier (et parfois d\'enregistrer). Ouvrez index.html directement dans le navigateur, ou depuis votre site, pour avoir la fenêtre «\u00a0Enregistrer\u00a0sous\u00a0».';
+}
+else if (!ReBASIC.peutChoisirEmplacement()) {
+  note.hidden = false;
+  note.textContent = 'Ce navigateur ne laisse pas une page ouvrir la fenêtre «\u00a0Enregistrer\u00a0sous\u00a0»\u00a0: le fichier ira dans Téléchargements. Pour choisir le dossier, utilisez Chrome ou Edge, ou réglez votre navigateur pour qu\'il demande où enregistrer chaque téléchargement.';
+}
+$('ouvrir').addEventListener('click', async () => {
+  try {
+    const f = await minitel.ouvrirFichier();
+    if (!f) return;
+    nomFichier = f.nom;
+    source.value = minitel.programme();
+    etat.textContent = f.nom + ' est chargé. Tapez RUN pour le lancer.';
+  }
+  catch (e) { etat.textContent = e.message; }
+});
+$('enregistrer').addEventListener('click', async () => {
+  // Le programme du Minitel ; s'il est vide, celui de l'éditeur
+  if (!minitel.programme().trim() && source.value.trim() && !charger()) return;
+  if (!minitel.programme().trim()) { etat.textContent = 'Il n\'y a pas de programme à enregistrer.'; return; }
+  try {
+    const nom = await minitel.enregistrerSous(nomFichier);
+    if (nom) {
+      nomFichier = nom;
+      etat.textContent = minitel.dernierEnregistrement === 'choisi'
+        ? 'Programme enregistré\u00a0: ' + nom
+        : nom + ' a été envoyé au dossier de téléchargements du navigateur.';
+    }
+  }
+  catch (e) { etat.textContent = 'Enregistrement impossible\u00a0: ' + e.message; }
+});
+</script>
+</body>
+</html>
