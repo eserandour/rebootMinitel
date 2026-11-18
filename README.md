@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.14f)
+# rebootMinitel (version 2026.11.18a)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
@@ -19,6 +19,7 @@ Site : <https://entropie.org/3615>
 - [Bibliothèques](#bibliothèques)
 - [Compilation](#compilation)
 - [Utilisation](#utilisation)
+- [Minitel virtuel](#minitel-virtuel)
 - [reBASIC](#rebasic)
   - [Saisie et touches](#saisie-et-touches)
   - [Commandes](#commandes)
@@ -32,6 +33,7 @@ Site : <https://entropie.org/3615>
   - [Messages d'erreur](#messages-derreur)
   - [Limites](#limites)
   - [Exemples](#exemples)
+- [Outils](#outils)
 
 ---
 
@@ -76,6 +78,19 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 | `0` | Réglage de l'horloge (saisie JJ/MM/AAAA hh:mm, `CORRECTION` pour effacer, `SOMMAIRE` pour revenir sans modifier) |
 | `1` | reBASIC |
 | `4` | À propos |
+
+---
+
+## Minitel virtuel
+
+Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
+
+- **C'est le même reBASIC** : `rebasic.js` est un portage ligne à ligne de `Basic.ino` (mêmes instructions, mêmes messages d'erreur, mêmes limites que l'Arduino Mega ou l'ESP32, nombres en `float` 32 bits). Les caractères passent par la même table que Minitel1B_Hard, et l'écran suit les règles du STUM 1B. Le rythme aussi est celui de la carte : liaison à 4800 bauds, 1000 instructions par seconde.
+- **Vérifié contre le simulateur** : `test/comparer.js` exécute tous les exemples du tutoriel dans les deux et compare les écrans case par case.
+- **La carte SD** est gardée dans le navigateur ; les boutons « Ouvrir… » et « Enregistrer sous… » échangent les programmes avec l'ordinateur, au format de `SAVE` : un programme écrit dans la page peut être copié sur la carte microSD, et inversement.
+- **Une bibliothèque JavaScript** : `rebasic.js` (un seul fichier, sans dépendance) permet de mettre un Minitel qui exécute un programme reBASIC dans n'importe quelle page web, par exemple pour présenter une œuvre.
+
+Voir le [README du Minitel virtuel](outils/minitel-virtuel/README.md).
 
 ---
 
@@ -200,17 +215,24 @@ Ces instructions suivent les règles du Minitel (STUM 1B, partie 2, chapitre 2) 
 - Le semi-graphique annule la taille, l'inversion et le soulignement du Minitel : reBASIC les rétablit après chaque dessin.
 - `CLS`, la fin du programme et les messages d'erreur reviennent à l'affichage normal.
 
+La une de **Minitel Matin** (`exemples/MATIN.BAS`) les utilise tous : un bandeau en vidéo inverse, un gros titre en double taille, un sous-titre en double largeur, une rubrique soulignée, des couleurs (en gris sur le Minitel 1B), une alerte sur fond bleu et une dernière minute qui clignote.
+
 ```basic
-10 CLS
-20 COLOR 0: PAPER 7: PRINT " reBASIC"; TAB(40)
-30 COLOR 7: PAPER 0
-40 LOCATE 11, 6: SIZE 3: PRINT "LE JEU": SIZE 0
-50 LOCATE 11, 10: UNDERLINE 1: PRINT " Hasard et réflexes"
-60 UNDERLINE 0
-70 LOCATE 10, 20: FLASH 1: PRINT "Appuyez sur une touche"
-80 FLASH 0
-90 IF INKEY$ = "" THEN 90
+10 CLS: INVERSE 1: PRINT " MINITEL MATIN"; TAB(40): INVERSE 0
+20 LOCATE 11, 4: SIZE 3: PRINT "IL NEIGE !": SIZE 0
+30 LOCATE 14, 7: SIZE 2: PRINT "Partout": SIZE 0
+40 LOCATE 1, 10: UNDERLINE 1: PRINT " La météo du jour": UNDERLINE 0
+50 PRINT: COLOR 6: PRINT " Matin : -3°C"
+60 COLOR 3: PRINT " Après-midi : 1°C": COLOR 7
+70 LOCATE 1, 16: PAPER 4: PRINT " Routes glissantes"; TAB(40)
+80 PAPER 0: LOCATE 13, 20: FLASH 1: PRINT "DERNIERE MINUTE": FLASH 0
+90 GOTO 90
 ```
+
+- La rubrique (ligne 40) et l'alerte (ligne 70) commencent par un espace : le soulignement et le fond sont des attributs de zone, qui ne prennent effet qu'au premier espace. La vidéo inverse (ligne 10), elle, s'applique tout de suite.
+- `TAB(40)` prolonge le bandeau et l'alerte jusqu'à la 39e colonne (reBASIC n'écrit pas dans la dernière, pour ne pas passer à la rangée suivante).
+- `SIZE 3` (ligne 20) descend le curseur d'une rangée : « IL NEIGE ! » occupe les rangées 4 et 5. En double largeur (ligne 30), « Partout » occupe 14 colonnes : les titres sont centrés en conséquence.
+- La ligne 90 garde la page à l'écran ; `ANNULATION` l'arrête.
 
 ### Fonctions
 
@@ -382,49 +404,69 @@ Ces tailles se règlent au début de `Basic.ino` (`BAS_PROG_SIZE`, `BAS_STR_MAX`
 
 ### Exemples
 
-**Une horloge**
+Le dossier [`exemples/`](exemples/) contient dix programmes, enregistrés au format de `SAVE` : on peut les copier sur la carte microSD et les charger avec `LOAD "BALLE"`, les ouvrir dans le [Minitel virtuel](#minitel-virtuel) (bouton « Ouvrir… », ou directement dans sa liste), ou les lancer dans le [simulateur](outils/simulateur/). Ils viennent presque tous du tutoriel, qui les explique en détail ; « Minitel Matin » illustre les [attributs d'affichage](#attributs-daffichage).
+
+| Fichier | Programme |
+|---|---|
+| [`BALLE.BAS`](exemples/BALLE.BAS) | **La balle qui rebondit** — Une balle rebondit dans un rectangle fermé : on l'efface, on la déplace, on la redessine. |
+| [`CERCLES.BAS`](exemples/CERCLES.BAS) | **Cercles** — Rectangles et cercles, vides et pleins (`BOX`, `CIRCLE`). |
+| [`HORLOGE.BAS`](exemples/HORLOGE.BAS) | **L'horloge** — La date et l'heure, centrées sur l'écran et mises à jour en permanence. |
+| [`LUNE.BAS`](exemples/LUNE.BAS) | **Au clair de la lune** — Une mélodie rangée dans des `DATA`, jouée sur le buzzer avec `SOUND`. |
+| [`MAISON.BAS`](exemples/MAISON.BAS) | **La maison** — Un dessin en couleurs : ciel, herbe, soleil, maison et porte (gris sur le Minitel 1B). |
+| [`MATIN.BAS`](exemples/MATIN.BAS) | **Minitel Matin** — La une d'un journal : vidéo inverse, double taille, double largeur, soulignement, couleurs, fond et clignotement. |
+| [`MYSTERE.BAS`](exemples/MYSTERE.BAS) | **Le nombre mystère** — Trouver un nombre entre 1 et 100 : « C'est plus », « C'est moins ». |
+| [`PAGES.BAS`](exemples/PAGES.BAS) | **Pages SUITE / RETOUR** — Des pages que l'on feuillette comme sur un service Minitel, avec `KEY`. |
+| [`PENDU.BAS`](exemples/PENDU.BAS) | **Le pendu** — Le jeu du pendu, avec ses mots dans des `DATA`. |
+| [`SERPENT.BAS`](exemples/SERPENT.BAS) | **Le serpent** — Un serpent avance au hasard et s'arrête quand il se touche : `POINT` lit l'écran. |
+
+**La balle qui rebondit** (`BALLE.BAS`)
+
+```basic
+10 CLS: X = 5: Y = 5: U = 1: V = 1
+20 BOX 0, 0, 79, 68
+30 PLOT X, Y, 0
+40 X = X + U: Y = Y + V
+50 IF X <= 1 OR X >= 78 THEN U = -U
+60 IF Y <= 1 OR Y >= 67 THEN V = -V
+70 PLOT X, Y
+80 GOTO 30
+```
+
+**Cercles** (`CERCLES.BAS`)
 
 ```basic
 10 CLS
-20 LOCATE 15,12: PRINT TIME$;
-30 PAUSE 500: GOTO 20
+20 BOX 2, 3, 30, 30
+30 BOX 8, 9, 24, 24, 1, 1
+40 CIRCLE 56, 18, 13
+50 CIRCLE 56, 18, 5, 1, 1
+60 BOX 40, 46, 76, 69
+70 CIRCLE 50, 57, 6: CIRCLE 66, 57, 6, 1, 1
+80 GOTO 80
 ```
 
-**Lire des données**
+**L'horloge** (`HORLOGE.BAS`)
 
 ```basic
-10 FOR I=1 TO 3
-20 READ N$, A
-30 PRINT N$; " a "; A; " ans"
-40 NEXT
-50 DATA "Alice",12,"Bruno",9,"Chloé",11
+10 CLS: LOCATE 16, 11: PRINT DATE$
+20 LOCATE 17, 13: PRINT TIME$;
+30 PAUSE 200: GOTO 20
 ```
 
-**Un menu avec ON … GOSUB**
+**Au clair de la lune** (`LUNE.BAS`)
 
 ```basic
-10 INPUT "Choix (1-3)"; C
-20 ON C GOSUB 100,200,300
-30 GOTO 10
-100 PRINT "Un": RETURN
-200 PRINT "Deux": RETURN
-300 PRINT "Trois": RETURN
+10 REM Au clair de la lune
+20 READ F, D
+30 IF F = 0 THEN END
+40 SOUND F, D: PAUSE 30
+50 GOTO 20
+100 DATA 262,400,262,400,262,400,294,400
+110 DATA 330,800,294,800,262,400,330,400
+120 DATA 294,400,294,400,262,1200,0,0
 ```
 
-**Un journal sur la carte SD**
-
-```basic
-10 OPEN "JOURNAL" FOR APPEND AS #1
-20 PRINT #1, DATE$, TIME$, AREAD(0)
-30 CLOSE #1
-40 OPEN "JOURNAL" FOR INPUT AS #1
-50 WHILE NOT EOF(1)
-60 LINE INPUT #1, L$: PRINT L$
-70 WEND
-80 CLOSE
-```
-
-**Un dessin**
+**La maison** (`MAISON.BAS`)
 
 ```basic
 10 CLS
@@ -436,11 +478,88 @@ Ces tailles se règlent au début de `Basic.ino` (`BAS_PROG_SIZE`, `BAS_STR_MAX`
 70 GOTO 70
 ```
 
+**Minitel Matin** (`MATIN.BAS`)
+
+```basic
+10 CLS: INVERSE 1: PRINT " MINITEL MATIN"; TAB(40): INVERSE 0
+20 LOCATE 11, 4: SIZE 3: PRINT "IL NEIGE !": SIZE 0
+30 LOCATE 14, 7: SIZE 2: PRINT "Partout": SIZE 0
+40 LOCATE 1, 10: UNDERLINE 1: PRINT " La météo du jour": UNDERLINE 0
+50 PRINT: COLOR 6: PRINT " Matin : -3°C"
+60 COLOR 3: PRINT " Après-midi : 1°C": COLOR 7
+70 LOCATE 1, 16: PAPER 4: PRINT " Routes glissantes"; TAB(40)
+80 PAPER 0: LOCATE 13, 20: FLASH 1: PRINT "DERNIERE MINUTE": FLASH 0
+90 GOTO 90
+```
+
+**Le nombre mystère** (`MYSTERE.BAS`)
+
+```basic
+10 CLS: PRINT "J'ai choisi un nombre"
+15 PRINT "entre 1 et 100."
+20 M = RND(100): C = 0
+30 INPUT "Ta proposition"; P
+40 C = C + 1
+50 IF P < M THEN PRINT "C'est plus.": GOTO 30
+60 IF P > M THEN PRINT "C'est moins.": GOTO 30
+70 PRINT "Gagné en "; C; " coups !"
+```
+
+**Pages SUITE / RETOUR** (`PAGES.BAS`)
+
+```basic
+10 P = 1
+20 CLS: PRINT "Page "; P; " sur 3"
+30 PRINT: PRINT "SUITE : page suivante"
+40 PRINT "RETOUR : page précédente"
+50 PRINT "ENVOI : fin"
+60 K = KEY: IF K = 0 THEN 60
+70 IF K = 4936 AND P < 3 THEN P = P + 1: GOTO 20
+80 IF K = 4930 AND P > 1 THEN P = P - 1: GOTO 20
+90 IF K <> 4929 THEN 60
+100 CLS: PRINT "Au revoir"
+```
+
+**Le pendu** (`PENDU.BAS`)
+
+```basic
+10 CLS: RESTORE: N = RND(5)
+20 FOR I = 1 TO N: READ M$: NEXT
+30 L = LEN(M$): T$ = "": E = 0
+40 FOR I = 1 TO L: T$ = T$ + "-": NEXT
+50 PRINT: PRINT T$; "   erreurs : "; E; "/7"
+60 IF T$ = M$ THEN PRINT "Gagné !": END
+70 IF E = 7 THEN PRINT "Perdu, c'était "; M$: END
+80 INPUT "Lettre"; C$: C$ = UPPER$(LEFT$(C$, 1))
+90 IF INSTR(M$, C$) = 0 THEN E = E + 1: GOTO 50
+100 FOR I = 1 TO L
+110 IF MID$(M$, I, 1) = C$ THEN GOSUB 200
+120 NEXT: GOTO 50
+200 T$ = LEFT$(T$, I - 1) + C$ + MID$(T$, I + 1): RETURN
+300 DATA MINITEL, ARDUINO, CLAVIER, MODEM, ECRAN
+```
+
+**Le serpent** (`SERPENT.BAS`)
+
+```basic
+10 CLS: X = 40: Y = 36: U = 1: V = 0: N = 0
+20 R = RND(8)
+30 IF R = 1 THEN W = U: U = V: V = -W
+40 IF R = 2 THEN W = U: U = -V: V = W
+50 X = X + U: Y = Y + V
+60 IF X < 0 OR X > 79 OR Y < 0 OR Y > 70 THEN 90
+70 IF POINT(X, Y) THEN 90
+80 PLOT X, Y: N = N + 1: GOTO 20
+90 LOCATE 1, 1: PRINT N; " pas.";
+100 GOTO 100
+```
+
 ---
 
 ## Outils
 
 Le dossier [`outils/`](outils/) contient, pour l'ordinateur :
 
+- le **Minitel virtuel** : rebootMinitel et reBASIC dans un navigateur, et la bibliothèque JavaScript `rebasic.js` (voir [Minitel virtuel](#minitel-virtuel)) ;
 - un **simulateur** de reBASIC, qui compile le vrai `Basic.ino` sur PC : exécuter un programme, utiliser reBASIC dans un terminal, produire des images d'écran ;
 - la **fabrication du tutoriel** « Programmer en reBASIC » (ODT et PDF), dont tous les exemples sont exécutés dans le simulateur.
