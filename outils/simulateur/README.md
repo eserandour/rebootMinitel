@@ -29,7 +29,7 @@ Le simulateur se compile tout seul au premier lancement, et chaque fois que `Bas
 ### Exécuter un programme
 
 ```sh
-python3 rebasic.py lancer exemples/bonjour.bas -t "Eric\n"
+python3 rebasic.py lancer ../../exemples/MYSTERE.BAS -t "50\n25\n"
 ```
 
 L'écran final s'affiche dans le terminal. Le programme est lu dans un fichier texte (une ligne numérotée par ligne de fichier) ; il est vérifié avant l'exécution : lignes de plus de 78 caractères, chaînes de plus de 32 octets, programme de plus de 2048 octets.
@@ -47,14 +47,14 @@ L'écran final s'affiche dans le terminal. Le programme est lu dans un fichier t
 Un programme qui ne s'arrête jamais (`GOTO 60` sur lui-même, horloge, jeu…) est interrompu au bout de la limite, et l'écran est capturé juste avant l'interruption :
 
 ```sh
-python3 rebasic.py lancer exemples/cercle.bas --rangees 24 --png cercle.png
+python3 rebasic.py lancer ../../exemples/BALLE.BAS --rangees 24 --png balle.png
 ```
 
 ### Utiliser reBASIC dans le terminal
 
 ```sh
 python3 rebasic.py interactif
-python3 rebasic.py interactif exemples/pendu.bas    # avec un programme déjà chargé
+python3 rebasic.py interactif ../../exemples/PENDU.BAS    # avec un programme déjà chargé
 ```
 
 L'écran du Minitel est redessiné dans le terminal à chaque fois que reBASIC attend une ligne (les semi-graphiques utilisent les caractères Unicode « sextants », qu'affichent la plupart des terminaux récents). Tapez une ligne puis Entrée. `Ctrl-D` ou `{SOMM}` quitte.
@@ -93,7 +93,6 @@ Exemple : `-t "{WAIT:500}{k:6}{WAIT:200}{k:6}{WAIT:200}{k: }"` frappe 6, puis 6,
 | `simulateur.cpp` | programme principal : clavier scripté, mode interactif, capture de l'écran |
 | `imitations.h` | imitations de l'Arduino, du Minitel, de la carte SD et de l'horloge |
 | `ecran.py` | dessin de l'écran en PNG ou en texte |
-| `exemples/` | quelques programmes |
 
 Les dossiers `build/` et `carte_sd/` sont créés à l'utilisation.
 
