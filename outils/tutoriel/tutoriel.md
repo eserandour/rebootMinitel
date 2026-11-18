@@ -21,6 +21,8 @@ Toutes les images d'écran de ce document ont été produites en exécutant rée
 - une carte microSD dans le lecteur, pour enregistrer vos programmes (chapitre 14) ;
 - l'horloge DS3231, pour les fonctions de date et d'heure (chapitre 13).
 
+Sans Minitel sous la main, vous pouvez aussi essayer les exemples dans le **Minitel virtuel** : ouvrez `outils/minitel-virtuel/index.html` dans un navigateur. C'est le même reBASIC, sur un écran et un clavier de Minitel 1B dessinés dans la page.
+
 ## Comment lire les exemples
 
 Les programmes à taper sont présentés ainsi :
@@ -395,20 +397,22 @@ Sur l'écran du Minitel, « Attention ! » clignote ; une image de ce document n
 
 ## Un écran titre
 
-En combinant tous ces effets :
+En combinant tous ces effets, voici l'écran d'accueil d'un service Minitel :
 
 ```basic
 10 CLS
-20 COLOR 0: PAPER 7: PRINT " reBASIC"; TAB(40)
+20 COLOR 0: PAPER 7: PRINT " 3615 REBOOT"; TAB(40)
 30 COLOR 7: PAPER 0
-40 LOCATE 11, 6: SIZE 3: PRINT "LE JEU": SIZE 0
-50 LOCATE 11, 10: UNDERLINE 1: PRINT " Hasard et réflexes"
+40 LOCATE 12, 6: SIZE 3: PRINT "BIENVENUE": SIZE 0
+50 LOCATE 9, 10: UNDERLINE 1: PRINT " Le Minitel reprend vie"
 60 UNDERLINE 0
 70 LOCATE 10, 20: FLASH 1: PRINT "Appuyez sur une touche"
 80 FLASH 0
 90 IF INKEY$ = "" THEN 90
 ```
 <!--ecran keys="{WAIT:300}{SNAP}{k:x}" rows=21-->
+
+Les textes sont centrés : « BIENVENUE » occupe 18 colonnes en double taille, et commence donc à la colonne 12 ; le sous-titre commence par l'espace qui déclenche le soulignement, à la colonne 9, pour que le texte souligné soit centré.
 
 # Dialoguer avec l'utilisateur
 
@@ -1158,21 +1162,21 @@ Le ciel (ligne 20) et l'herbe (ligne 30) sont des rectangles effacés ; le solei
 
 ## Une animation : la balle qui rebondit
 
-Pour animer, on efface l'objet, on change sa position, on le redessine.
+Pour animer, on efface l'objet, on change sa position, on le redessine. Ici, la balle rebondit dans un rectangle fermé.
 
 ```basic
 10 CLS: X = 5: Y = 5: U = 1: V = 1
-20 LINE 0, 0, 79, 0: LINE 0, 71, 78, 71
+20 BOX 0, 0, 79, 68
 30 PLOT X, Y, 0
 40 X = X + U: Y = Y + V
 50 IF X <= 1 OR X >= 78 THEN U = -U
-60 IF Y <= 1 OR Y >= 70 THEN V = -V
+60 IF Y <= 1 OR Y >= 67 THEN V = -V
 70 PLOT X, Y
 80 GOTO 30
 ```
-<!--ecran rows=24 limit=6000-->
+<!--ecran rows=24 limit=6004-->
 
-`U` et `V` sont les vitesses horizontale et verticale : quand la balle touche un bord, la vitesse change de signe.
+`U` et `V` sont les vitesses horizontale et verticale : quand la balle touche un bord, la vitesse change de signe. Le rectangle s'arrête à y = 68, au-dessus de la dernière rangée : avec `BOX 0, 0, 79, 71`, son coin en bas à droite manquerait, car cette case n'est jamais dessinée.
 
 ## Lire l'écran : POINT
 
@@ -1230,11 +1234,13 @@ L'heure se règle dans le menu **0 – Réglage Horloge** de l'écran d'accueil.
 ## Une horloge à l'écran
 
 ```basic
-10 CLS: LOCATE 13, 10: PRINT DATE$
-20 LOCATE 14, 12: PRINT TIME$;
+10 CLS: LOCATE 16, 11: PRINT DATE$
+20 LOCATE 17, 13: PRINT TIME$;
 30 PAUSE 200: GOTO 20
 ```
 <!--ecran rows=24 limit=3000-->
+
+La date (10 caractères) commence à la colonne 16 et l'heure (8 caractères) à la colonne 17 : elles sont centrées sur les 40 colonnes.
 
 ## Mesurer une durée : TIMER
 
