@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.18d)
+# rebootMinitel (version 2026.11.19a)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
@@ -23,6 +23,7 @@ Site : <https://entropie.org/3615>
 - [Utilisation](#utilisation)
   - [Pages Vidéotex (menu 2)](#pages-vidéotex-menu-2)
   - [Carte SD (menu 3)](#carte-sd-menu-3)
+  - [Pong (menu 4)](#pong-menu-4)
 - [Minitel virtuel](#minitel-virtuel)
 - [reBASIC](#rebasic)
   - [Saisie et touches](#saisie-et-touches)
@@ -83,7 +84,8 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 | `1` | reBASIC |
 | `2` | Pages Vidéotex (voir ci-dessous) |
 | `3` | Carte SD (voir ci-dessous) |
-| `4` | À propos |
+| `4` | Pong (voir ci-dessous) |
+| `5` | À propos |
 
 ### Pages Vidéotex (menu 2)
 
@@ -108,11 +110,15 @@ Le menu 3 est un **gestionnaire de la carte SD** : il liste les fichiers de la r
 | `3` | **Supprimer**, après confirmation par `ENVOI` |
 | `SOMMAIRE` | Retour à la liste, puis au menu |
 
+### Pong (menu 4)
+
+Le jeu de Pong, en semi-graphique : `0` Minitel contre Minitel (une démonstration qui ne s'arrête pas, jusqu'à `SOMMAIRE`), `1` un joueur contre le Minitel, `2` deux joueurs sur le même clavier. `A` et `Q` font monter et descendre la raquette de gauche, `P` et `M` celle de droite. Pendant le jeu, rien n'est écrit en bas de l'écran. Le premier à 5 points gagne : le gagnant s'affiche alors, centré en bas, avec `ENVOI` pour rejouer ; `SOMMAIRE` revient au menu. Le jeu dessine dans la mémoire de points de reBASIC : il n'utilise presque pas de mémoire vive en plus. Le clavier du Minitel n'envoie qu'une touche à la fois : à deux, les joueurs se partagent le clavier.
+
 ---
 
 ## Minitel virtuel
 
-Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, pages Vidéotex, carte SD, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
+Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, pages Vidéotex, carte SD, Pong, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
 
 <img src="photos/minitel-virtuel.png" height="600" alt="Le Minitel virtuel : l'écran d'accueil de rebootMinitel et le clavier du Minitel 1B">
 

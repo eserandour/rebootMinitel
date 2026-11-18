@@ -37,6 +37,10 @@ void ecranAccueil()
         break;
      case 0x34 :  // Touche 4
         fin = true;
+        selectMenu(TAG_MENU_PONG);
+        break;
+     case 0x35 :  // Touche 5
+        fin = true;
         selectMenu(TAG_MENU_A_PROPOS);
         break;
      default:
@@ -65,26 +69,28 @@ void ecranAccueil()
          minitel.moveCursorRight(5); minitel.println(F("|_______ \\____|__  /______  /"));
          minitel.moveCursorRight(13); minitel.println(F("\\/       \\/       \\/"));
          // Nom et version
-         minitel.moveCursorDown(3);
+         minitel.moveCursorDown(2);
          minitel.println(F("rebootMinitel"));
          minitel.println("V." + VERSION);
 
          // MENU
-         minitel.moveCursorXY(20,15);
+         minitel.moveCursorXY(20,14);
          //minitel.print("puis ");
          minitel.attributs(INVERSION_FOND);
          minitel.print(F("MENU"));
          minitel.attributs(FOND_NORMAL);
-         minitel.moveCursorXY(20,17);
+         minitel.moveCursorXY(20,16);
          minitel.println(F("0 - Réglage Horloge"));
-         minitel.moveCursorXY(20,18);
+         minitel.moveCursorXY(20,17);
          minitel.println(F("1 - reBASIC"));
-         minitel.moveCursorXY(20,19);
+         minitel.moveCursorXY(20,18);
          minitel.println(F("2 - Pages Vidéotex"));
-         minitel.moveCursorXY(20,20);
+         minitel.moveCursorXY(20,19);
          minitel.println(F("3 - Carte SD"));
+         minitel.moveCursorXY(20,20);
+         minitel.println(F("4 - Pong"));
          minitel.moveCursorXY(20,21);
-         minitel.println(F("4 - À propos"));
+         minitel.println(F("5 - À propos"));
        }
        afficherHorloge(11,24);
        break;
@@ -121,6 +127,14 @@ void menuVideotex()
 void menuCarteSD()
 {
   carteSD();
+  selectMenu(TAG_ECRAN_ACCUEIL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void menuPong()
+{
+  pong();
   selectMenu(TAG_ECRAN_ACCUEIL);
 }
 
