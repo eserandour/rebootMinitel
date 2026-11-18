@@ -274,6 +274,12 @@ const EXEMPLES = {
 120 DATA 294,400,294,400,262,1200,0,0`
 };
 
+// Les pages Vidéotex du dossier exemples/ (en base 64), pour le menu 2
+const PAGES = {
+  'DEMO1.VDT': 'DB9AQRgKH0FBDhtEfxJnDx9CQQ4bRCMSZw8fRUgbRxtPcmVib290G0wfRVUbRhtNTWluaXRlbBtMH0hBG0cgUGFnZXMgVmlkGUJlb3RleCBzdXIgbGEgY2FydGUgU0QfSkIbQ1VuZSBwYWdlIE1pbml0ZWwgZXN0IHVuZSBzdWl0ZR9LQhtDZCdvY3RldHMgOiBsZSBNaW5pdGVsIGxhIGRlc3NpbmUfTEIbQxlBYSBtZXN1cmUgcXUnaWwgbGVzIHJlGUtjb2l0Lh9OQw4bQH8SRQ8fTkwOG0F/EkUPH05VDhtCfxJFDx9OXg4bQ38SRQ8fUEMOG0R/EkUPH1BMDhtFfxJFDx9QVQ4bRn8SRQ8fUF4OG0d/EkUPH1NCG0dMZXMgY291bGV1cnMgZGV2aWVubmVudCBkZXMgZ3Jpcx9UQhtHc3VyIGxlIE1pbml0ZWwgMUIuH1ZBDhtEcBJnDx9XQQ4bRH8SZw8=',
+  'DEMO2.VDT': 'DB9AQRgKH0FBDhtHIBJnDx9CQQ4bRiASZw8fQ0EOG0cgEk1wEkF8EkdwEkEgEk0PH0RBDhtGIBJJYHh+fxJBLxJBIxJFLxJBfxJBfXQwIBJJDx9FQQ4bRyASR3B+fz8jISASQnASRSASQiIjb399cCASRw8fRkEOG0YgEkVgfn8nISASQXB8fn8SR318cCASQSIrf30wIBJFDx9HQQ4bRyASRHh/PyEgEkF4fxJBPy8jISASQyIjL29/EkF0IBJBIm9/dCASRA8fSEEOG0YgEkNofz8gEkFgfxJBPyMgEkFgcHwSQ3AwIBJBI29/EkEwIBJBb380IBJDDx9JQQ4bRyASQmB/EkEgEkFofxJBJyASQXh+fxJBPy8SQW9/EkF9dCASQSt/EkE0IBJBfxJBMCASQg8fSkEOG0YgEkJ6fzUgEkF/EkE3IBJBen8SQScgEkUrfxJBdSASQWt/EkEgEkFqf3UgEkIPH0tBDhtHIBJCfxJBIBJBan8SQSASQWh/EkElIGB8fxJBfDAgKn8SQTQgEkF/EkE1IBJBfxJBIBJCDx9MQQ4bRiASQn8SQSASQWp/EkEgEkFqfxJBIBJBan8SQzUgEkF/EkE1IBJBfxJBNSASQX8SQSASQg8fTUEOG0cgEkJ/EkEwICp/EkEwICJ/EkF1IBJBIy8SQSMgEkF6fxJBISBgfxJBJSBgfxJBIBJCDx9OQQ4bRiASQmp/dSASQW9/fSASQSp/EkF9cDAgEkFgcH5/EkElIBJBfn8/IBJBen81IBJCDx9PQQ4bRyASQ29/MCAib399MCAiK29/EkU/JyEgYH5/PyEgYH8/IBJDDx9QQQ4bRiASQyJ/EkEwIBJBL38SQXwwIBJCIxJDIBJCYHx/EkEvIBJBYH8SQSEgEkMPH1FBDhtHIBJEIm9/dCASQSIvfxJCfHRwEkN4fH8SQi8hIBJBeH8/ISASRA8fUkEOG0YgEkYrf310MCASQSMrL38SRS8nIyASQWB4fn8nIBJGDx9TQQ4bRyASSCtvf3x0cCASSXB4fH8/JyASSA8fVEEOG0YgEkoiKy9/EkJ8EkV/EkIvJyEgEkoPH1VBDhtHIBJPIxJHIBJPDx9WQQ4bRiASZw8fV0EOG0cgEmcP'
+};
+
 const $ = (id) => document.getElementById(id);
 const select = $('exemples'), source = $('source'), etat = $('etat');
 for (const nom of Object.keys(EXEMPLES).sort((a, b) => a.localeCompare(b, 'fr'))) select.add(new Option(nom, nom));
@@ -292,6 +298,10 @@ function construire() {
     clavierPage: true,
     carte: $('carte').value
   });
+  // Sans page Vidéotex sur la carte SD, on y met celles des exemples
+  if (!minitel.sd.liste().some((f) => /\.VDT$/i.test(f.nom))) {
+    for (const [nom, b64] of Object.entries(PAGES)) minitel.sd.ecrire(nom, Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  }
   if (programme) {
     try { minitel.charger(programme); }
     catch (e) { etat.textContent = 'Le programme ne tient pas dans la mémoire de cette carte.'; }
@@ -332,6 +342,7 @@ $('ouvrir').addEventListener('click', async () => {
   try {
     const f = await minitel.ouvrirFichier();
     if (!f) return;
+    if (f.page) { etat.textContent = f.nom + ' est sur la carte SD : choisissez 2 dans le menu pour la voir.'; return; }
     nomFichier = f.nom;
     source.value = minitel.programme();
     etat.textContent = f.nom + ' est chargé. Tapez RUN pour le lancer.';

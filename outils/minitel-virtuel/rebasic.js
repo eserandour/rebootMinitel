@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.18c';  // Celle de rebootMinitel
+  const VERSION = '2026.11.18d';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -165,6 +165,9 @@
   // - le passage en semi-graphique annule la taille, l'inversion et le soulignement ;
   // - la double hauteur est dessinée vers le haut, et ignorée sur la première rangée ;
   // - mode rouleau : l'écran défile quand on descend sous la 24e rangée.
+  // Pour les pages Vidéotex (menu 2), il comprend aussi la répétition (REP), la rangée 0
+  // (ignorée : c'est la ligne de service du Minitel) et les commandes PRO1 à PRO3, que
+  // reBASIC n'envoie jamais.
 
   function caseVide() {
     return {
@@ -203,6 +206,7 @@
     effacer() {
       for (const l of this.cases) for (let j = 0; j < 40; j++) l[j] = caseVide();
       this.r = 0; this.c = 0;
+      this.rangee0 = false;
       this.initAttributs();
       this.modifie = true;
     }
@@ -233,6 +237,8 @@
     avancer(n) { this.c += n; if (this.c >= 40) { this.c -= 40; this.descendre(); } }
 
     poser(car, graphique, points) {
+      if (this.rangee0) return;  // La rangée 0 n'est pas dessinée
+      this.dernier = [car, graphique, points];  // Pour la répétition (REP)
       let delimiteur = false;
       if (graphique) this.fondZone = this.fondLatent;
       else if (car === ' ' && (this.delimiteurAttendu || this.fondLatent !== this.fondZone || this.soulLatent !== this.soulZone)) {
@@ -303,6 +309,9 @@
         case 1:  // Après ESC
           this.etat = 0;
           if (b === 0x5B) { this.etat = 2; this.csi = ''; return; }
+          // PRO1, PRO2, PRO3 (réglages du Minitel) et masquage : on saute leurs paramètres
+          if (b === 0x39 || b === 0x3A || b === 0x3B) { this.saut = b - 0x38; this.etat = 8; return; }
+          if (b === 0x23) { this.saut = 2; this.etat = 8; return; }
           this.attribut(b);
           return;
         case 2:  // Séquence CSI
@@ -314,6 +323,12 @@
           this.memo = b; this.etat = 4; return;
         case 4:  // US : colonne
           this.etat = 0;
+          if (this.memo === 0x40) {  // Rangée 0 : on garde la position, jusqu'au LF qui en sort
+            if (!this.rangee0) this.avant0 = [this.r, this.c];
+            this.rangee0 = true;
+            return;
+          }
+          this.rangee0 = false;
           this.r = Math.min(23, Math.max(0, this.memo - 0x41));
           this.c = Math.min(39, Math.max(0, b - 0x41));
           this.zoneIci();
@@ -327,13 +342,23 @@
           this.etat = 0;
           this.poser(G2_COMPOSE[this.memo * 256 + b] || String.fromCharCode(b), false, 0);
           return;
+        case 7:  // REP : le dernier caractère, répété (b - 0x40) fois
+          this.etat = 0;
+          if (this.dernier) for (let i = 0; i < (b & 0x3F); i++) this.poser(...this.dernier);
+          return;
+        case 8:  // Paramètres d'une commande que l'on saute
+          if (--this.saut <= 0) this.etat = 0;
+          return;
       }
       switch (b) {
         case 0x1B: this.etat = 1; return;
         case 0x1F: this.etat = 3; return;
         case 0x19: this.etat = 5; return;
         case 0x0D: this.c = 0; this.zoneIci(); this.modifie = true; return;
-        case 0x0A: this.descendre(); this.modifie = true; return;
+        case 0x0A:
+          if (this.rangee0) { this.rangee0 = false; [this.r, this.c] = this.avant0; this.zoneIci(); return; }
+          this.descendre(); this.modifie = true; return;
+        case 0x12: this.etat = 7; return;
         case 0x08: if (this.c > 0) this.c--; this.zoneIci(); this.modifie = true; return;
         case 0x09: this.c = Math.min(39, this.c + 1); this.zoneIci(); this.modifie = true; return;
         case 0x0B: this.r = Math.max(0, this.r - 1); this.zoneIci(); this.modifie = true; return;
@@ -341,7 +366,7 @@
         case 0x0E: this.modeSemiGraphique(); return;
         case 0x0F: this.modeGraphique = false; return;
         case 0x1E: this.r = 0; this.c = 0; this.zoneIci(); this.modifie = true; return;
-        case 0x18: this.effacerFinRangee(); return;
+        case 0x18: if (!this.rangee0) this.effacerFinRangee(); return;
         case 0x11: this.curseur = true; this.modifie = true; return;
         case 0x14: this.curseur = false; this.modifie = true; return;
         case 0x07: if (this.surBip) this.surBip(); return;
@@ -600,7 +625,7 @@
 
     const HELP_PAGES = 4;
     const AIDE = [
-      ['Commandes :', ' RUN LIST [n][-m] NEW MEM AIDE', ' EDIT n  RENUM [d\u00e9but][,pas]',
+      ['Commandes :', ' RUN LIST [n][-m] [/P] NEW MEM AIDE', ' EDIT n  RENUM [d\u00e9but][,pas]',
         ' SAVE "NOM" LOAD "NOM" MERGE "NOM"', ' FILES KILL "NOM"', '',
         'Instructions :', ' PRINT (ou ?) avec ; , TAB(n)', ' INPUT ["texte";] v[,v...]',
         ' [LET] v = expression', ' IF cond THEN ... [ELSE ...]', ' GOTO n  GOSUB n  RETURN',
@@ -646,7 +671,7 @@
         keyName('CORRECTION'); puts(' efface\n ');
         keyName('ANNULATION'); puts(' interrompt\n ');
         keyName('GUIDE'); puts(' aide  ');
-        keyName('SOMMAIRE'); puts(' quitte\n');
+        keyName('SOMMAIRE'); puts(' menu\n');
       }
       moveXY(1, 24);
       col = 0;
@@ -1785,8 +1810,40 @@
     //////////////////////////////////////////////////////////////////////////////
     // Instructions
 
+    function listPages() {
+      // L'option /P de LIST (avant ou après les numéros de lignes)
+      skip();
+      if (T[P] !== '/') return false;
+      P++;
+      skip();
+      if (T[P] !== 'P') { err = E_SYNTAXE; return false; }
+      P++;
+      return true;
+    }
+
+    function* listPause() {
+      // LIST /P : l'écran est plein. SUITE (ou ENVOI) continue ; ANNULATION ou SOMMAIRE arrête
+      keyName('SUITE');
+      puts(' : suite - ');
+      keyName('ANNULATION');
+      puts(' : arr\u00eat');
+      let k = 0;
+      while (k !== SUITE && k !== ENVOI && k !== 0x0D && k !== ANNULATION && k !== SOMMAIRE) {
+        if (arretExterne) { k = ANNULATION; break; }
+        k = env.cle();
+        if (k === 0) yield ATTENTE_CLE;
+      }
+      wb(0x0D);
+      clearLineFromCursor();
+      col = 0;
+      return k !== ANNULATION && k !== SOMMAIRE;
+    }
+
     function* list() {
+      // LIST [n][-m] [/P] : avec /P, la liste s'arrête à chaque écran plein
       let debut = 1, fin = 65535;
+      let pages = listPages();
+      if (err) return;
       skip();
       let r = parseNum(T, P);
       if (r) { P = r[1]; debut = Math.trunc(r[0]); fin = debut; }
@@ -1798,12 +1855,22 @@
         r = parseNum(T, P);
         if (r) { P = r[1]; fin = Math.trunc(r[0]); }
       }
+      if (!pages) pages = listPages();
+      if (err) return;
       const suite = P;
+      let rangees = 0;  // Rangées de l'écran déjà remplies par la liste
       for (let i = findLine(debut); i < prog.length && prog[i].n <= fin && err === 0; i++) {
+        // Rangées de cette ligne (40 caractères pile : deux rangées, comme sur le Minitel)
+        const hauteur = Math.floor((String(prog[i].n).length + 1 + [...prog[i].t].length) / 40) + 1;
+        if (pages && rangees + hauteur > 22) {
+          if (!(yield* listPause())) break;
+          rangees = 0;
+        }
         printNum(prog[i].n);
         puts(' ');
         puts(prog[i].t);
         newLine();
+        rangees += hauteur;
         checkBreak();
         while (env.fileOctets() > 64 && err === 0) yield ATTENTE_FLUX;
       }
@@ -2511,7 +2578,7 @@
       }
     }
 
-    function* basic(accueil) {
+    function* basic(accueil, lancer) {
       newScreen();
       col = 0;
       gfxClear();
@@ -2524,8 +2591,17 @@
         keyName('GUIDE');
         puts(' : aide - ');
         keyName('SOMMAIRE');
-        puts(' : quitter\n');
+        puts(' : retour au menu');
+        if (col !== 0) newLine();  // 40 caractères pile : le Minitel est déjà passé à la ligne
         if (env.afficherOk) puts('Ok\n');
+      }
+      if (lancer) {
+        // Le gestionnaire de la carte SD (menu 3) a demandé de lancer un programme : LOAD
+        // puis RUN, affichés comme si on les avait tapés (comme basic() dans Basic.ino)
+        const charger = 'LOAD "' + lancer + '"';
+        puts(charger); newLine();
+        yield* executerLigne(charger);
+        if (err === 0) { puts('RUN'); newLine(); yield* executerLigne('RUN'); }
       }
       while (true) {
         const edition = editPending;
@@ -2631,14 +2707,14 @@
       attributs(FOND_NORMAL);
       moveXY(20, 17); println('0 - R\u00e9glage Horloge');
       moveXY(20, 18); println('1 - reBASIC');
-      moveXY(20, 19); println('2 - ');
-      moveXY(20, 20); println('3 - ');
+      moveXY(20, 19); println('2 - Pages Vid\u00e9otex');
+      moveXY(20, 20); println('3 - Carte SD');
       moveXY(20, 21);
       println('4 - \u00c0 propos');  // Le Minitel affiche « A propos » : pas de majuscule accentuée
       while (true) {
         if (env.commandeEnAttente()) return 0x31;
         const k = env.cle();
-        if (k === 0x30 || k === 0x31 || k === 0x34) return k;
+        if (k >= 0x30 && k <= 0x34) return k;
         // L'horloge, en bas de l'écran, mise à jour à chaque seconde
         if (env.horlogeOK) {
           const t = env.horloge();
@@ -2658,7 +2734,7 @@
       moveXY(debut, 11); puts('JJ/MM/AAAA  hh:mm');
       moveXY(debut, 12); puts('  /  /        :  ');
       moveXY(1, 23); afficherTouche('CORRECTION'); puts(' : effacer');
-      moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour sans modifier');
+      moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour au menu sans modifier');
       const position = [0, 1, 3, 4, 6, 7, 8, 9, 12, 13, 15, 16];
       let chaine = '';
       let abandon = false;
@@ -2703,10 +2779,221 @@
       moveXY(x, 13); puts('Minitel1B_Hard (2016-2026)');
       moveXY(x, 15); puts('Logiciel Libre (GNU GPLv3)');
       moveXY(x, 17); puts('https://entropie.org/3615');
-      moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour');
+      moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour au menu');
       while (true) {
         const k = yield* attendreCle();
         if (k === 0 || k === SOMMAIRE) return;
+      }
+    }
+
+    function vdtPresentation(n) {
+      // L'écran qui précède les pages : leur nombre et les touches (comme Videotex.ino)
+      newScreen();
+      wb(0x14);
+      moveXY(1, 3); afficherTouche(' Pages Vid\u00e9otex ');
+      if (n === 0) {
+        moveXY(1, 7); puts('Aucune page sur la carte SD.');
+        moveXY(1, 9); puts('Copiez des fichiers .VDT (pages');
+        moveXY(1, 10); puts('Minitel) \u00e0 la racine de la carte.');
+        moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour');
+        return;
+      }
+      moveXY(1, 7); puts(n + (n === 1 ? ' page sur la carte SD' : ' pages sur la carte SD'));
+      moveXY(1, 10); afficherTouche('SUITE'); puts(' : page suivante');
+      moveXY(1, 12); afficherTouche('RETOUR'); puts(' : page pr\u00e9c\u00e9dente');
+      moveXY(1, 14); afficherTouche('ENVOI'); puts(' : d\u00e9filement automatique');
+      moveXY(1, 16); afficherTouche('SOMMAIRE'); puts(' : retour au menu');
+    }
+
+    function* vdtAttendre(defilement, debut) {
+      // SUITE, RETOUR, ENVOI ou SOMMAIRE ; en défilement automatique, SUITE au bout de 10 s
+      while (true) {
+        if (env.commandeEnAttente()) return SOMMAIRE;
+        const k = env.cle();
+        if (k === SOMMAIRE || k === SUITE || k === RETOUR || k === ENVOI) return k;
+        if (defilement && env.millis() - debut >= VDT_DUREE) return SUITE;
+        yield { t: 'temps', fin: env.millis() + 100 };
+      }
+    }
+
+    function* vdtAfficher(nom) {
+      // Envoie la page au Minitel ; renvoie la touche de fonction frappée pendant l'envoi, ou 0
+      newScreen();
+      const octets = env.sd.lire(nom);
+      for (let i = 0; i < octets.length; i++) {
+        wb(octets[i] & 0x7F);
+        if (i % 32 === 31) {
+          const k = env.cle();
+          if (k === SOMMAIRE || k === SUITE || k === RETOUR || k === ENVOI) { wb(0x14); return k; }
+          while (env.fileOctets() > 64) yield ATTENTE_FLUX;
+        }
+      }
+      wb(0x14);
+      return 0;
+    }
+
+    function* pagesVideotex() {
+      // Menu 2 : les fichiers .VDT de la carte SD, par ordre alphabétique (comme Videotex.ino)
+      const pages = env.sd.liste().map((f) => f.nom).filter((n) => /^.+\.VDT$/i.test(n)).sort();
+      vdtPresentation(pages.length);
+      if (pages.length === 0) {
+        while ((yield* attendreCle()) !== SOMMAIRE && !env.commandeEnAttente());
+        return;
+      }
+      // SUITE ou ENVOI (défilement automatique) : la première page ; ensuite, rien que les pages
+      let k = 0;
+      while (k !== SUITE && k !== ENVOI && k !== SOMMAIRE) k = yield* vdtAttendre(false, 0);
+      if (k === SOMMAIRE) return;
+      let defilement = (k === ENVOI);
+      if (defilement) yield* bipOK();
+      let i = -1, sens = 1, changer = true, debut = 0;
+      while (true) {
+        k = 0;
+        if (changer) {
+          i = (i + sens + pages.length) % pages.length;
+          k = yield* vdtAfficher(pages[i]);
+          debut = env.millis();
+        }
+        if (k === 0) k = yield* vdtAttendre(defilement, debut);
+        if (k === SOMMAIRE) break;
+        if (k === ENVOI) {
+          defilement = !defilement;
+          if (defilement) yield* bipOK(); else bip();
+          debut = env.millis();
+          changer = false;
+        }
+        else { sens = (k === RETOUR) ? -1 : 1; changer = true; }
+      }
+      newScreen();
+      wb(0x0F);
+      wb(0x14);
+    }
+
+    const FICH_PAR_PAGE = 16;
+
+    function fichTitre(titre) {
+      newScreen(); wb(0x14);
+      moveXY(1, 1); afficherTouche(titre);
+    }
+
+    function fichTaille(taille, rangee) {
+      const t = String(taille);
+      moveXY(41 - t.length, rangee); puts(t);
+    }
+
+    function fichListe(fichiers, page) {
+      // Un écran de la liste (comme fichListe dans Fichiers.ino)
+      const nombre = fichiers.length, pages = Math.ceil(nombre / FICH_PAR_PAGE);
+      fichTitre(' Carte SD ');
+      moveXY(12, 1); puts(nombre + (nombre === 1 ? ' fichier' : ' fichiers'));
+      if (pages > 1) { const t = (page + 1) + '/' + pages; moveXY(41 - t.length, 1); puts(t); }
+      if (nombre === 0) {
+        moveXY(1, 4); puts('La carte SD est vide, absente ou');
+        moveXY(1, 5); puts('illisible.');
+      }
+      fichiers.slice(page * FICH_PAR_PAGE, (page + 1) * FICH_PAR_PAGE).forEach((f, i) => {
+        moveXY(1, 3 + i); afficherTouche(String.fromCharCode(0x41 + i)); puts(' ');
+        puts(f.nom.length > 26 ? f.nom.slice(0, 25) + '~' : f.nom);
+        fichTaille(f.taille, 3 + i);
+      });
+      moveXY(1, 21); puts("Tapez la lettre d'un fichier.");
+      if (pages > 1) { moveXY(1, 23); afficherTouche('RETOUR'); puts(' - '); afficherTouche('SUITE'); puts(' : autres fichiers'); }
+      moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour au menu');
+    }
+
+    function* fichCle(acceptees) {
+      // Attend l'une des touches données (ou une commande de la page : SOMMAIRE)
+      while (true) {
+        const k = yield* attendreCle();
+        if (k === 0) return SOMMAIRE;
+        if (acceptees.includes(k)) return k;
+      }
+    }
+
+    function* fichAfficherTexte(nom) {
+      // Le fichier comme du texte, 22 rangées par écran (comme fichAfficherTexte)
+      const lignes = [];
+      for (const brute of depuisOctets(env.sd.lire(nom)).replace(/\r/g, '').split('\n')) {
+        let l = [...brute.replace(/\t/g, ' ')].filter((c) => c.codePointAt(0) >= 0x20);
+        do { lignes.push(l.slice(0, 40).join('')); l = l.slice(40); } while (l.length > 0);
+      }
+      if (lignes.length && lignes[lignes.length - 1] === '') lignes.pop();
+      newScreen();
+      let rangee = 1;
+      for (let i = 0; i < lignes.length; i++) {
+        moveXY(1, rangee); puts(lignes[i]);
+        while (env.fileOctets() > 64) yield ATTENTE_FLUX;
+        if (++rangee > 22 && i < lignes.length - 1) {
+          moveXY(1, 24); afficherTouche('SUITE'); puts(' : suite - '); afficherTouche('SOMMAIRE'); puts(' : retour');
+          if ((yield* fichCle([SUITE, ENVOI, SOMMAIRE])) === SOMMAIRE) return;
+          newScreen();
+          rangee = 1;
+        }
+      }
+      moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour (fin du fichier)');
+      yield* fichCle([SOMMAIRE]);
+    }
+
+    function* fichFichier(f) {
+      // L'écran d'un fichier : 0 retour à la liste, 1 supprimé, 2 programme lancé
+      const programme = /\.BAS$/i.test(f.nom), page = /\.VDT$/i.test(f.nom);
+      while (true) {
+        fichTitre(' Carte SD ');
+        moveXY(1, 4); puts(f.nom); fichTaille(f.taille, 4);
+        moveXY(1, 5); puts(programme ? 'Programme reBASIC' : page ? 'Page Vid\u00e9otex' : 'Fichier');
+        moveXY(1, 9); puts('1 - Afficher');
+        if (programme) { moveXY(1, 11); puts('2 - Lancer'); }
+        moveXY(1, 13); puts('3 - Supprimer');
+        moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour \u00e0 la liste');
+        const k = yield* fichCle(programme ? [0x31, 0x32, 0x33, SOMMAIRE] : [0x31, 0x33, SOMMAIRE]);
+        if (k === SOMMAIRE) return 0;
+        if (k === 0x31) {
+          if (page) { yield* vdtAfficher(f.nom); yield* fichCle([SOMMAIRE]); newScreen(); wb(0x0F); }
+          else yield* fichAfficherTexte(f.nom);
+        }
+        else if (k === 0x32) {
+          yield* basic(true, f.nom);
+          if (env.surSommaire) env.surSommaire();
+          return 2;
+        }
+        else {
+          moveXY(1, 17); puts('Supprimer ce fichier ?');
+          moveXY(1, 19); afficherTouche('ENVOI'); puts(' : oui - '); afficherTouche('SOMMAIRE'); puts(' : non');
+          if ((yield* fichCle([ENVOI, SOMMAIRE])) === ENVOI) {
+            env.sd.supprimer(f.nom);
+            yield* bipOK();
+            return 1;
+          }
+        }
+      }
+    }
+
+    function* carteSD() {
+      // Menu 3 : le gestionnaire de la carte SD (comme Fichiers.ino)
+      let page = 0;
+      while (true) {
+        const fichiers = env.sd.liste();
+        const pages = Math.ceil(fichiers.length / FICH_PAR_PAGE);
+        if (page >= pages) page = Math.max(0, pages - 1);
+        fichListe(fichiers, page);
+        let choix = -1;
+        while (choix < 0) {
+          let k = yield* attendreCle();
+          if (k === 0 || k === SOMMAIRE) return;
+          if (k === SUITE || k === RETOUR) {
+            const nouvelle = page + (k === SUITE ? 1 : -1);
+            if (nouvelle >= 0 && nouvelle < pages) { page = nouvelle; break; }
+            bip();
+          }
+          if (k >= 0x61 && k <= 0x7A) k -= 32;
+          if (k >= 0x41 && k < 0x41 + FICH_PAR_PAGE) {
+            const i = page * FICH_PAR_PAGE + (k - 0x41);
+            if (i < fichiers.length) choix = i;
+            else bip();
+          }
+        }
+        if (choix < 0) continue;
+        if ((yield* fichFichier(fichiers[choix])) === 2) return;
       }
     }
 
@@ -2720,6 +3007,8 @@
           yield* basic(env.accueilBasic);
           if (env.surSommaire) env.surSommaire();
         }
+        else if (choix === 0x32) yield* pagesVideotex();
+        else if (choix === 0x33) yield* carteSD();
         else if (choix === 0x34) yield* aPropos();
         newScreen();
       }
@@ -3104,27 +3393,29 @@
 .rebasic-clavier .rk.rc-espace{width:calc(var(--u) * 6.4)}
 .rebasic-clavier .rk.rc-entree{width:calc(var(--u) * 1.5)}
 .rebasic-clavier .rk .rc-o,.rebasic-clavier .rk .rc-r{position:absolute;bottom:calc(100% + var(--u) * .1);font-size:calc(var(--u) * .32);font-weight:600;line-height:1;white-space:nowrap;pointer-events:none}
-.rebasic-clavier .rk .rc-o{right:calc(100% - var(--u) * .06);color:#e2ac2e;transform:translateY(var(--dy, 0px))}
-.rebasic-clavier .rc-pave .rk .rc-o{right:auto;left:calc(var(--u) * -.06);bottom:calc(100% - var(--u) * .02);transform:translate(-50%, var(--dy, 0px))}
-.rebasic-clavier .rc-pave .rk .rc-o.rc-accent,.rebasic-clavier .rc-pave .rk .rc-o.rc-moyen{bottom:calc(100% - var(--u) * .02)}
+.rebasic-clavier .rk .rc-o{left:calc(var(--u) * -.06);color:#e2ac2e;transform:translate(calc(-50% + var(--dx, 0px)), var(--dy, 0px))}
+.rebasic-clavier .rc-pave .rk .rc-o{bottom:calc(100% + var(--u) * .03)}
+.rebasic-clavier .rc-pave .rk .rc-o.rc-accent,.rebasic-clavier .rc-pave .rk .rc-o.rc-moyen{bottom:calc(100% + var(--u) * .03)}
 .rebasic-clavier .rk .rc-r{right:calc(var(--u) * -.04);color:#ea5a2c;font-size:calc(var(--u) * .23)}
 .rebasic-clavier .rc-bas .rk .rc-o,.rebasic-clavier .rc-bas .rk .rc-r{font-size:calc(var(--u) * .25)}
-.rebasic-clavier .rc-bas .rk .rc-o{right:auto;left:calc(var(--u) * -.08)}
+.rebasic-clavier .rc-bas .rk .rc-o{left:calc(var(--u) * -.08);transform:none}
 .rebasic-clavier .rk .rc-o.rc-accent{font-size:calc(var(--u) * .55);bottom:calc(100% - var(--u) * .1)}
 .rebasic-clavier .rk .rc-o.rc-moyen{font-size:calc(var(--u) * .48);bottom:calc(100% + var(--u) * .02)}
-.rebasic-clavier .rk .rc-o.rc-etoile{bottom:calc(100% - var(--u) * .09)}
-.rebasic-clavier .rk .rc-o.rc-trait{bottom:calc(100% + var(--u) * .14)}
+.rebasic-clavier .rk .rc-o.rc-etoile{bottom:calc(100% + var(--u) * .137)}
+.rebasic-clavier .rk .rc-o.rc-etoile svg{display:block;width:calc(var(--u) * .24);height:calc(var(--u) * .24)}
+.rebasic-clavier .rk .rc-o.rc-trait{bottom:calc(100% + var(--u) * .19)}
 .rebasic-clavier .rk .rc-o.rc-trait svg{display:block;width:calc(var(--u) * .15);height:calc(var(--u) * .19)}
 .rebasic-clavier .rk.rc-fn .rc-r{right:calc(var(--u) * .12)}
 .rebasic-clavier .rk .rc-l{font-size:calc(var(--u) * .25);line-height:1.05;text-align:center;font-weight:500}
 `;
 
   const CONNEXION_FIN = 0x1349;
-  const ACCENTS_GRAVES = ['^', '\u00b4', '`', '\u00a8', '"'];
-  const SIGNES_MOYENS = ['\u2019', '*'];  // Gravés plus grands que leur dessin dans la police
+  const VDT_DUREE = 10000;  // Défilement automatique des pages Vidéotex : 10 s par page
+  const ACCENTS_GRAVES = ['\u00b4', '`', '\u00a8', '"'];
+  const SIGNES_MOYENS = ['\u2019'];  // Gravés plus grands que leur dessin dans la police
   // Signes que la police dessine trop haut : on les descend (en fractions de touche) pour que
   // le milieu de chaque signe soit sur la même ligne que ses voisins
-  const DESCENTES = { '^': .05, '\u00a8': .14, '"': .227, '\u2019': -.092, '(': -.012, ')': -.012, '[': -.012, ']': -.012, '\u2191': .008 };
+  const DESCENTES = { '\u00a8': .11, '@': -.01, '/': .012, '"': .227, '\u2019': -.092, '(': -.012, ')': -.012, '[': -.012, ']': -.012, '\u2191': .008 };
   const CTRL_NOMS = { I: 'TAB', H: 'BS', J: 'LF', X: 'CAN' };
 
   function creerClavierVirtuel(machine) {
@@ -3187,15 +3478,25 @@
         const s = document.createElement('span');
         s.className = 'rc-o' + (ACCENTS_GRAVES.includes(opt.orange) ? ' rc-accent' : '') +
           (SIGNES_MOYENS.includes(opt.orange) ? ' rc-moyen' : '') +
-          (opt.orange === '*' ? ' rc-etoile' : '') +  // L'astérisque de la police est dessiné trop haut
-          (opt.orange === '\u00b4' || opt.orange === '`' ? ' rc-trait' : '');
+          (opt.orange === '*' ? ' rc-etoile' : '') +  // L'astérisque est dessiné : voir plus bas
+          (opt.orange === '\u00b4' || opt.orange === '`' || opt.orange === '^' ? ' rc-trait' : '');
         s.textContent = opt.orange;
         if (DESCENTES[opt.orange]) s.style.setProperty('--dy', 'calc(var(--u) * ' + DESCENTES[opt.orange] + ')');
+        if (opt.orange === '\u2019') s.style.setProperty('--dx', 'calc(var(--u) * -.025)');  // Apostrophe dessinée penchée
+        if (opt.orange === '*') {
+          // L'astérisque de la police est petit et placé trop haut, différemment selon la
+          // résolution de l'écran : on le dessine (six branches, comme sur le clavier), centré
+          // sur la même ligne que ses voisins
+          s.innerHTML = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 L5 9 M1.5 3 L8.5 7 M1.5 7 L8.5 3"' +
+            ' fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+        }
         if (s.classList.contains('rc-trait')) {
           // Accent aigu ou grave : un petit trait penché et légèrement courbé, comme sur le clavier
-          const d = opt.orange === '`' ? 'M1.8 2 Q3.1 5.1 6 8' : 'M6.2 2 Q4.9 5.1 2 8';
+          // (l'accent circonflexe : un chevron fin, de la hauteur des autres accents)
+          const d = opt.orange === '^' ? 'M1.2 7.6 L4 2.6 L6.8 7.6' :
+            opt.orange === '`' ? 'M1.8 2 Q3.1 5.1 6 8' : 'M6.2 2 Q4.9 5.1 2 8';
           s.innerHTML = '<svg viewBox="0 0 8 10" aria-hidden="true"><path d="' + d +
-            '" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
+            '" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         }
         if (opt.orange === '\u2019') {
           // Apostrophe : une tête ronde et une queue courbée, comme sur le clavier
@@ -3383,7 +3684,10 @@
     catch (e) { return true; }
   }
 
-  const TYPES_FICHIERS = [{ description: 'Programme reBASIC', accept: { 'text/plain': ['.bas', '.BAS', '.txt'] } }];
+  const TYPES_FICHIERS = [
+    { description: 'Programme reBASIC', accept: { 'text/plain': ['.bas', '.BAS', '.txt'] } },
+    { description: 'Page Vid\u00e9otex', accept: { 'application/octet-stream': ['.vdt', '.VDT'] } }
+  ];
 
   const BOUTONS = [
     ['SOMMAIRE', SOMMAIRE], ['ANNULATION', ANNULATION], ['RETOUR', RETOUR], ['R\u00c9P\u00c9TITION', REPETITION],
@@ -3804,8 +4108,9 @@
     }
 
     async ouvrirFichier() {
-      // Choisit un fichier sur l'ordinateur et le charge (comme LOAD).
-      // Renvoie { nom, texte }, ou null si on a annulé.
+      // Choisit un fichier sur l'ordinateur et le charge (comme LOAD). Une page Vidéotex
+      // (.VDT) est copiée sur la carte SD, pour le menu 2.
+      // Renvoie { nom, texte }, { nom, page: true } ou null si on a annulé.
       let fichier = null;
       if (typeof window.showOpenFilePicker === 'function') {
         try {
@@ -3820,7 +4125,7 @@
         fichier = await new Promise((resoudre) => {
           const i = document.createElement('input');
           i.type = 'file';
-          i.accept = '.bas,.BAS,.txt,.TXT,text/plain';
+          i.accept = '.bas,.BAS,.txt,.TXT,text/plain,.vdt,.VDT';
           i.style.display = 'none';
           i.addEventListener('change', () => { resoudre(i.files[0] || null); i.remove(); });
           i.addEventListener('cancel', () => { resoudre(null); i.remove(); });
@@ -3829,6 +4134,14 @@
         });
       }
       if (!fichier) return null;
+      if (/\.vdt$/i.test(fichier.name)) {
+        // Le Vidéotex est un code sur 7 bits : on range les octets tels quels sur la carte
+        const octets = new Uint8Array(await fichier.arrayBuffer()).map((b) => b & 0x7F);
+        const nom = fichier.name.toUpperCase();
+        if (!this.sd.ecrire(nom, octets)) throw new Error('La carte SD est pleine.');
+        this.focus();
+        return { nom, page: true };
+      }
       const texte = await fichier.text();
       this.charger(texte);
       this.focus();

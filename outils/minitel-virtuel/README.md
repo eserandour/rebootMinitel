@@ -2,7 +2,7 @@
 
 <img src="../../photos/minitel-virtuel.png" height="600" alt="Le Minitel virtuel : l'écran d'accueil de rebootMinitel et le clavier du Minitel 1B">
 
-Ouvrez **`index.html`** dans un navigateur : rebootMinitel démarre sur son écran d'accueil (menu, date et heure), comme sur la carte. Tapez **1** pour entrer dans reBASIC, au clavier de l'ordinateur ou sur celui du Minitel 1B dessiné sous l'écran. La liste à droite contient les programmes du dossier [`exemples/`](../../exemples/) ; « Ouvrir… » et « Enregistrer sous… » échangent les programmes avec l'ordinateur.
+Ouvrez **`index.html`** dans un navigateur : rebootMinitel démarre sur son écran d'accueil (menu, date et heure), comme sur la carte. Tapez **1** pour entrer dans reBASIC, au clavier de l'ordinateur ou sur celui du Minitel 1B dessiné sous l'écran. La liste à droite contient les programmes du dossier [`exemples/`](../../exemples/) ; « Ouvrir… » et « Enregistrer sous… » échangent les programmes avec l'ordinateur. « Ouvrir… » accepte aussi les pages Vidéotex (`.VDT`) : elles vont sur la carte SD, et le menu **2** les affiche (`SUITE`, `RETOUR`, `ENVOI` pour le défilement automatique). Les deux pages du dossier `exemples/` y sont déjà. Le menu **3** gère la carte SD du navigateur : afficher, lancer ou supprimer un fichier.
 
 | Fichier | Rôle |
 |---|---|
@@ -33,7 +33,7 @@ Vérifié contre le simulateur C officiel (`outils/simulateur`) : sur les 117 é
 </script>
 ```
 
-L'écran d'accueil de rebootMinitel s'affiche, comme sur la carte : le logo entropie LAB, la version, le menu, et la date et l'heure en bas de l'écran, mises à jour chaque seconde. On tape **1** pour entrer dans reBASIC, **0** pour régler l'horloge, **4** pour « À propos » ; **SOMMAIRE** ramène à l'accueil. L'heure réglée est gardée dans le navigateur (c'est un décalage par rapport à l'heure de l'ordinateur). Avec `menu: false`, la page démarre directement dans reBASIC ; et si un programme est lancé au démarrage (`lancer`), il démarre aussitôt, sans passer par l'accueil.
+L'écran d'accueil de rebootMinitel s'affiche, comme sur la carte : le logo entropie LAB, la version, le menu, et la date et l'heure en bas de l'écran, mises à jour chaque seconde. On tape **1** pour entrer dans reBASIC, **0** pour régler l'horloge, **2** pour les pages Vidéotex, **3** pour la carte SD, **4** pour « À propos » ; **SOMMAIRE** ramène à l'accueil. L'heure réglée est gardée dans le navigateur (c'est un décalage par rapport à l'heure de l'ordinateur). Avec `menu: false`, la page démarre directement dans reBASIC ; et si un programme est lancé au démarrage (`lancer`), il démarre aussitôt, sans passer par l'accueil.
 
 Ou sans écrire de JavaScript, avec le programme dans la page :
 
