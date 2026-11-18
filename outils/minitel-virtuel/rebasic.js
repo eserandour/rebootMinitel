@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.18b';  // Celle de rebootMinitel
+  const VERSION = '2026.11.18c';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -3328,7 +3328,7 @@
         instructions: 1000,      // Instructions par seconde (0 : aussi vite que possible)
         carte: 'mega',           // 'mega' ou 'esp32' (tailles de la mémoire)
         menu: true,              // Démarrer sur l'écran d'accueil de rebootMinitel (menu, date et heure)
-        version: '2026.11.18b',  // Version de rebootMinitel affichée sur l'écran d'accueil
+        version: VERSION,        // Version de rebootMinitel affichée sur l'écran d'accueil
         accueil: true,           // Afficher l'écran d'accueil de reBASIC
         afficherOk: true,        // Afficher « Ok » quand reBASIC attend
         programme: null,         // Programme chargé au démarrage

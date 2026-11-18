@@ -73,7 +73,7 @@ ReBASIC.creer(element, {
   instructions: 1000,    // instructions par seconde ; 0 : aussi vite que possible
   carte: 'mega',         // 'mega' ou 'esp32' (16 ko de programme, chaînes de 78 octets…)
   menu: true,            // démarrer sur l'écran d'accueil de rebootMinitel (entropie LAB, menu, date et heure)
-  version: '2026.11.14f',// version affichée sur cet écran
+  version: ReBASIC.VERSION, // version affichée sur cet écran (par défaut, celle de rebootMinitel)
   accueil: true,         // l'écran d'accueil « reBASIC - 2048 octets libres »
   afficherOk: true,      // le « Ok » de l'invite
   programme: null,       // programme chargé au démarrage (texte)
