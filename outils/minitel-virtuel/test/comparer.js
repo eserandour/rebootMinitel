@@ -30,6 +30,14 @@ const tuto = fs.readFileSync(path.join(depot, 'outils/tutoriel/tutoriel.md'), 'u
     process.exitCode = 1;
   }
   else console.log(`Les ${page.length} exemples de index.html sont ceux du dossier exemples/.`);
+  // Les pages Vidéotex aussi
+  const p = h.indexOf('const PAGES = {');
+  const PAGES = eval('(' + h.slice(p + 'const PAGES = '.length, h.indexOf('\n};', p) + 2) + ')');
+  const vdt = fs.readdirSync(path.join(depot, 'exemples')).filter((f) => /\.VDT$/i.test(f)).sort();
+  const pareilles = JSON.stringify(Object.keys(PAGES).sort()) === JSON.stringify(vdt) &&
+    vdt.every((f) => Buffer.from(PAGES[f], 'base64').equals(fs.readFileSync(path.join(depot, 'exemples', f))));
+  if (!pareilles) { console.log('Les pages Vid\u00e9otex de index.html ne sont pas celles du dossier exemples/.'); process.exitCode = 1; }
+  else console.log(`Les ${vdt.length} pages Vid\u00e9otex de index.html sont celles du dossier exemples/.`);
 }
 
 function options(s) {
@@ -217,6 +225,10 @@ for (let i = 0; i < tuto.length; i++) {
 
 // Les exemples du simulateur et quelques cas en plus
 const extra = [
+  ["list-pages-pause", "NEW\n10 PRINT \"Ligne 10\"\n20 PRINT \"Ligne 20\"\n30 PRINT \"Ligne 30\"\n40 PRINT \"Ligne 40\"\n50 PRINT \"Ligne 50\"\n60 PRINT \"Ligne 60\"\n70 PRINT \"Ligne 70\"\n80 PRINT \"Ligne 80\"\n90 PRINT \"Ligne 90\"\n100 REM XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n110 PRINT \"Ligne 110\"\n120 PRINT \"Ligne 120\"\n130 PRINT \"Ligne 130\"\n140 PRINT \"Ligne 140\"\n150 PRINT \"Ligne avec des accents : éèàç et une suite assez longue pour deux rangées\"\n160 PRINT \"Ligne 160\"\n170 PRINT \"Ligne 170\"\n180 PRINT \"Ligne 180\"\n190 PRINT \"Ligne 190\"\n200 PRINT \"Ligne 200\"\n210 PRINT \"Ligne 210\"\n220 PRINT \"Ligne 220\"\n230 PRINT \"Ligne 230\"\n240 PRINT \"Ligne 240\"\n250 PRINT \"Ligne 250\"\n260 PRINT \"Ligne 260\"\n270 PRINT \"Ligne 270\"\n280 PRINT \"Ligne 280\"\n290 PRINT \"Ligne 290\"\n300 PRINT \"Ligne 300\"\nLIST /P\n{WAIT:2000}{SNAP}{WAIT:100}{SUITE}"],
+  ["list-pages-fin", "NEW\n10 PRINT \"Ligne 10\"\n20 PRINT \"Ligne 20\"\n30 PRINT \"Ligne 30\"\n40 PRINT \"Ligne 40\"\n50 PRINT \"Ligne 50\"\n60 PRINT \"Ligne 60\"\n70 PRINT \"Ligne 70\"\n80 PRINT \"Ligne 80\"\n90 PRINT \"Ligne 90\"\n100 REM XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n110 PRINT \"Ligne 110\"\n120 PRINT \"Ligne 120\"\n130 PRINT \"Ligne 130\"\n140 PRINT \"Ligne 140\"\n150 PRINT \"Ligne avec des accents : éèàç et une suite assez longue pour deux rangées\"\n160 PRINT \"Ligne 160\"\n170 PRINT \"Ligne 170\"\n180 PRINT \"Ligne 180\"\n190 PRINT \"Ligne 190\"\n200 PRINT \"Ligne 200\"\n210 PRINT \"Ligne 210\"\n220 PRINT \"Ligne 220\"\n230 PRINT \"Ligne 230\"\n240 PRINT \"Ligne 240\"\n250 PRINT \"Ligne 250\"\n260 PRINT \"Ligne 260\"\n270 PRINT \"Ligne 270\"\n280 PRINT \"Ligne 280\"\n290 PRINT \"Ligne 290\"\n300 PRINT \"Ligne 300\"\nLIST /P\n{WAIT:2000}{SUITE}"],
+  ["list-pages-arret", "NEW\n10 PRINT \"Ligne 10\"\n20 PRINT \"Ligne 20\"\n30 PRINT \"Ligne 30\"\n40 PRINT \"Ligne 40\"\n50 PRINT \"Ligne 50\"\n60 PRINT \"Ligne 60\"\n70 PRINT \"Ligne 70\"\n80 PRINT \"Ligne 80\"\n90 PRINT \"Ligne 90\"\n100 REM XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n110 PRINT \"Ligne 110\"\n120 PRINT \"Ligne 120\"\n130 PRINT \"Ligne 130\"\n140 PRINT \"Ligne 140\"\n150 PRINT \"Ligne avec des accents : éèàç et une suite assez longue pour deux rangées\"\n160 PRINT \"Ligne 160\"\n170 PRINT \"Ligne 170\"\n180 PRINT \"Ligne 180\"\n190 PRINT \"Ligne 190\"\n200 PRINT \"Ligne 200\"\n210 PRINT \"Ligne 210\"\n220 PRINT \"Ligne 220\"\n230 PRINT \"Ligne 230\"\n240 PRINT \"Ligne 240\"\n250 PRINT \"Ligne 250\"\n260 PRINT \"Ligne 260\"\n270 PRINT \"Ligne 270\"\n280 PRINT \"Ligne 280\"\n290 PRINT \"Ligne 290\"\n300 PRINT \"Ligne 300\"\nLIST 20-300/P\n{WAIT:2000}{ANNUL}PRINT \"fin\"\n"],
+  ["list-pages-erreur", "NEW\n10 PRINT 1\nLIST /X\nLIST 10 /P\n"],
   ['erreurs', 'PRINT 2+*3\nPRINT 1/0\n10 GOSUB 99\nRUN\nRETURN\nNEXT\nX = "A"\nCOLOR 9\nLOCATE 1,25\nPRINTA\nSIZE 3:PRINT "AB"\n'],
   ['nombres', 'PRINT 1/3, 2/3, 1E9, 1.5E-5\nPRINT 123456789, 0.1+0.2, -7.25, 3E38*10\nPRINT 100000/7, 1E-4, 99999999\nPRINT SQR(2)*SQR(2), INT(-2.5), 5 MOD 3, -5 MOD 3\nPRINT NOT 0, NOT -1, 3 AND 5, 3 OR 5, 2^0.5\nPRINT STR$(1/7)+"|", VAL(" -12.5E2x"), HEX$(-1), HEX$(65535)\n'],
   ['chaines', 'A$="éèàçù":PRINT LEN(A$), ASC(A$), MID$(A$,2,2), RIGHT$(A$,2)\nB$="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ":PRINT B$:PRINT LEN(B$)\nC$="éééééééééééééééééé":PRINT LEN(C$)\nPRINT INSTR(3,"ABCABC","BC"), UPPER$("abcé"), LOWER$("ABC")\nPRINT "A" < "B", "a" > "Z", "AB" = "AB"\n'],
