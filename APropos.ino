@@ -11,19 +11,27 @@ void aPropos()
   
   texte = F("rebootMinitel (2023-2026)");
   int x = (40 - texte.length()) / 2 + 1; 
-  minitel.moveCursorXY(x, 9);
+  minitel.moveCursorXY(x, 7);
   minitel.print(texte);
   
   texte = F("Un projet d'Eric Sérandour");
+  minitel.moveCursorXY(x, 9);
+  minitel.print(texte);
+
+  texte = F("basé sur sa bibliothèque");
   minitel.moveCursorXY(x, 11);
   minitel.print(texte);
 
-  texte = F("Logiciel Libre (GNU GPLv3)");
+  texte = F("Minitel1B_Hard (2016-2026)");
   minitel.moveCursorXY(x, 13);
   minitel.print(texte);
 
-  texte = F("https://entropie.org/3615");
+  texte = F("Logiciel Libre (GNU GPLv3)");
   minitel.moveCursorXY(x, 15);
+  minitel.print(texte);
+
+  texte = F("https://entropie.org/3615");
+  minitel.moveCursorXY(x, 17);
   minitel.print(texte);
 
   minitel.moveCursorXY(1, 24);

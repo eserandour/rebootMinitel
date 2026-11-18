@@ -2073,27 +2073,46 @@ void basLoad(boolean fusion)
 
 void basFiles()
 {
-  // Liste les fichiers de la carte SD (les programmes .BAS sans leur extension)
+  // Liste les fichiers de la carte SD par ordre alphabétique (les programmes .BAS sans
+  // leur extension). Pour ne pas garder tous les noms en mémoire, chaque passage relit le
+  // dossier et cherche le plus petit nom qui vient après le dernier nom affiché.
+  const byte MAX = 64;
+  char dernier[MAX], suivant[MAX];
+  dernier[0] = 0;
+  bool premier = true;
   File racine = SD.open("/");
   if (!racine) { basErr = BAS_E_FICHIER; return; }
-  racine.rewindDirectory();
   while (basErr == 0) {
-    File f = racine.openNextFile();
-    if (!f) break;
-    if (!f.isDirectory()) {
-      char nom[14];
-      const char* complet = f.name();
-      if (complet[0] == '/') complet++;
-      strncpy(nom, complet, 13);
-      nom[13] = 0;
-      byte n = strlen(nom);
-      if (n > 4 && strcasecmp_P(nom + n - 4, PSTR(".BAS")) == 0) nom[n - 4] = 0;
-      basPuts(nom);
-      while (basCol < 13) { minitel.writeByte(' '); basAvance(); }
-      basPrintNum(f.size());
-      basNewLine();
+    bool trouve = false;
+    unsigned long taille = 0;
+    racine.rewindDirectory();
+    while (true) {
+      File f = racine.openNextFile();
+      if (!f) break;
+      if (!f.isDirectory()) {
+        const char* complet = f.name();
+        if (complet[0] == '/') complet++;
+        if ((premier || strcmp(complet, dernier) > 0) && (!trouve || strcmp(complet, suivant) < 0)) {
+          strncpy(suivant, complet, MAX - 1);
+          suivant[MAX - 1] = 0;
+          taille = f.size();
+          trouve = true;
+        }
+      }
+      f.close();
     }
-    f.close();
+    if (!trouve) break;
+    char nom[14];
+    strncpy(nom, suivant, 13);
+    nom[13] = 0;
+    byte n = strlen(nom);
+    if (n > 4 && strcasecmp_P(nom + n - 4, PSTR(".BAS")) == 0) nom[n - 4] = 0;
+    basPuts(nom);
+    while (basCol < 13) { minitel.writeByte(' '); basAvance(); }
+    basPrintNum(taille);
+    basNewLine();
+    strcpy(dernier, suivant);
+    premier = false;
     basCheckBreak();
   }
   racine.close();

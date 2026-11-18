@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.18a)
+# rebootMinitel (version 2026.11.18b)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
@@ -144,7 +144,7 @@ RUN
 | `SAVE "NOM"` | Enregistre le programme dans `NOM.BAS` sur la carte SD |
 | `LOAD "NOM"` | Charge `NOM.BAS` (remplace le programme en cours) |
 | `MERGE "NOM"` | Ajoute les lignes de `NOM.BAS` au programme en cours (une ligne de même numéro est remplacée) |
-| `FILES` | Liste les fichiers de la carte SD, avec leur taille (les programmes sans leur extension `.BAS`) |
+| `FILES` | Liste les fichiers de la carte SD par ordre alphabétique, avec leur taille (les programmes sans leur extension `.BAS`) |
 | `KILL "NOM"` | Supprime `NOM.BAS` (ou le fichier nommé, s'il a une extension : `KILL "DONNEES.TXT"`) |
 
 Les noms de fichiers suivent le format 8.3 : 1 à 8 lettres, chiffres, `_` ou `-`, et une extension facultative de 1 à 3 caractères.
