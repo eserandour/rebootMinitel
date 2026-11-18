@@ -1,9 +1,9 @@
- //////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 /*
    rebootMinitel
    Copyright 2023-2026 - Eric Sérandour
 */
-   const String VERSION = "2026.11.18b";  // 19h04
+   const String VERSION = "2026.11.18c";  // 19h31
 /*
    
    This program is free software: you can redistribute it and/or modify
@@ -21,51 +21,62 @@
 */
 //////////////////////////////////////////////////////////////////////////////////////
 /*
-  Compilation réussie avec Arduino 1.8.19
-  Type de carte : Arduino Mega 2560 + Shield 3615 Mega (version du 27/06)
-  
+  Cartes :
+  * Arduino Mega 2560 + Shield 3615 Mega (version du 27/06/2023).
+    Compilation réussie avec l'IDE Arduino 1.8.19.
+  * ESP32 (carte esp32 d'Espressif Systems, version 3.x).
+
+  Bibliothèques : Minitel1B_Hard, RTClib (Adafruit), SD (voir le README).
+*/
 //////////////////////////////////////////////////////////////////////////////////////
-
 /*
-  L'électronique (non exhaustif) :
-  
-  * MicroSD Card Adapter de chez Catalex
-  * Horloge RTC DS3231
+  L'électronique du shield (liste non exhaustive) :
 
-  Le circuit :
- 
+  * Module MicroSD Card Adapter de Catalex
+  * Module horloge temps réel (RTC) DS3231
+
+  Le circuit, sur l'Arduino Mega :
+
     Les entrées / sorties numériques :
   ======================================
   * Buzzer sur D2
     D2 -> R = 470 ohms -> Buzzer -> GND.
- 
-  * La carte SD est reliée au bus SPI (bus série normalisé) de la manière suivante :
-  ** SS - D53 sur l'Arduino Mega. (voir la constante CHIP_SELECT)
-  ** MOSI - D51 sur l'Arduino Mega. (Master Out Slave In : Sortie de données séries)
-  ** MISO - D50 sur l'Arduino Mega. (Master In Slave Out : Entrée de données séries)
-  ** SCK - D52 sur l'Arduino Mega. (Serial ClocK : Pour synchroniser les échanges de données)
+
+  * La carte SD est reliée au bus SPI (bus série synchrone) :
+  ** SS   - D53 (voir la constante CHIP_SELECT)
+  ** MOSI - D51 (Master Out Slave In : données envoyées à la carte)
+  ** MISO - D50 (Master In Slave Out : données reçues de la carte)
+  ** SCK  - D52 (Serial ClocK : synchronise les échanges)
 
     Les ports de communication :
   ======================================
   * L'horloge RTC est reliée à :
-  ** Bus I2C : SDA (D20 sur l'Arduino Mega)
-  ** Bus I2C : SCL (D21 sur l'Arduino Mega)
+  ** Bus I2C : SDA (D20)
+  ** Bus I2C : SCL (D21)
   ** SQW - D34
   ** 32K - D36
 
-  * Les ports séries UART :
-  ** RX0 / TX0 - D0 / D1 pour communiquer avec le PC
-  ** RX0' / TX0' - pour communiquer avec une carte à 3V3
-  ** TX2 / RX2 - D16 / D17 pour communiquer avec le slot USB-A
-  ** TX1 / RX1 - D18 / D19 pour communiquer avec le Minitel
-   
+  * Les ports série UART :
+  ** RX0 / TX0   - D0 / D1   : communication avec le PC (USB)
+  ** RX0' / TX0'             : communication avec une carte en 3,3 V
+  ** TX2 / RX2   - D16 / D17 : communication avec l'embase USB-A
+  ** TX1 / RX1   - D18 / D19 : communication avec le Minitel
+
     Bilan :
   ===========
-    Sont utilisées  : D0, D1, D16, D17, D18, D19,       (Port série)
-                      D2,                               (Buzzer)
-                      D20, D21,                         (I2C : SDA/SCL)
-                      D34, D36,                         (SQW et 32K de l'horloge RTC)
-                      D50, D51, D52, D53,               (SPI pour carte SD)
+    Sont utilisées : D0, D1, D16, D17, D18, D19,   (ports série)
+                     D2,                           (buzzer)
+                     D20, D21,                     (I2C : SDA / SCL)
+                     D34, D36,                     (SQW et 32K de l'horloge RTC)
+                     D50, D51, D52, D53            (SPI de la carte SD)
+
+  Sur l'ESP32 :
+  * Minitel : Serial2, RX = GPIO16, TX = GPIO17
+  * Horloge RTC : I2C, SDA = GPIO21, SCL = GPIO22
+  * Carte SD : SPI (VSPI), CS = GPIO5, SCK = GPIO18, MISO = GPIO19, MOSI = GPIO23
+  * Buzzer : GPIO2
+  L'horloge et la carte SD sont facultatives : sans elles, rebootMinitel le signale
+  au démarrage et continue.
 */
 
 // #include <SPI.h> // Nécessaire avec Arduino 1.6.12, inutile avec Arduino 1.8.19
@@ -123,32 +134,32 @@ byte ecran = TAG_ECRAN_ACCUEIL;
 
 void setup()
 {
-  // Liaison avec l'ordinateur. Transfert des données à 9600 bauds.
-  Serial.begin(9600);  
+  // Liaison avec l'ordinateur, à 9600 bauds
+  Serial.begin(9600);
 
-  // Minitel
+  // Minitel : on cherche sa vitesse, puis on passe à 4800 bauds
   minitel.changeSpeed(minitel.searchSpeed());
   minitel.changeSpeed(4800);
   minitel.newScreen();
   minitel.standardKeyboard();
   minitel.smallMode();
 
-  // Liaison avec le slot USB-A du shield. Transfert des données à 9600 bauds.
-  // Serial2.begin(9600);  
+  // Liaison avec l'embase USB-A du shield, à 9600 bauds (non utilisée)
+  // Serial2.begin(9600);
 
   // Buzzer
   pinMode(BUZZER, OUTPUT);
   
-  // Initialisation de l'interface I2C.
-  Wire.begin();   
-  
+  // Bus I2C
+  Wire.begin();
+
   // Horloge RTC DS3231 (I2C)
-  initHorloge();  
+  initHorloge();
 
   // Carte SD
-  // Make sure that the default chip select pin is set to output, even if you don't use it.
-  pinMode(CHIP_SELECT, OUTPUT); // Chip Select en sortie.
-  // See if the card is present and can be initialized. 
+  // La broche Chip Select doit être en sortie
+  pinMode(CHIP_SELECT, OUTPUT);
+  // La carte est-elle présente et utilisable ?
   if (!SD.begin(CHIP_SELECT)) {
     minitel.moveCursorXY(11,24);
     minitel.print(F("Problème de carte SD"));

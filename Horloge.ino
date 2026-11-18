@@ -15,11 +15,10 @@ void initHorloge()
   horlogeOK = rtc.begin();
   if (horlogeOK) {
     if (rtc.lostPower()) {
-      Serial.println(F("RTC lost power, lets set the time!"));
-      // following line sets the RTC to the date & time this sketch was compiled
+      Serial.println(F("L'horloge a perdu l'heure : mise à l'heure de la compilation"));
+      // Règle l'horloge sur la date et l'heure de compilation du croquis
       rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-      // This line sets the RTC with an explicit date & time, for example to set
-      // January 21, 2014 at 3am you would call:
+      // Pour une date et une heure précises, par exemple le 21 janvier 2014 à 3 h :
       // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
     }
     if (!testHorloge()) {
@@ -32,7 +31,7 @@ void initHorloge()
   }
   if (!horlogeOK) {
     // Pas d'horloge : on le signale sur le Minitel et le programme continue sans elle
-    Serial.println(F("Couldn't find RTC"));
+    Serial.println(F("Horloge introuvable"));
     minitel.moveCursorXY(11, 23);
     minitel.print(F("Horloge introuvable"));
     bipErreur();

@@ -64,18 +64,11 @@ void ecranAccueil()
          minitel.moveCursorRight(5); minitel.println(F("|    |___/    |    \\    |   \\"));
          minitel.moveCursorRight(5); minitel.println(F("|_______ \\____|__  /______  /"));
          minitel.moveCursorRight(13); minitel.println(F("\\/       \\/       \\/"));
-         // reboot
-         // Font: digital
-         // Source : http://www.network-science.de/ascii/
+         // Nom et version
          minitel.moveCursorDown(3);
          minitel.println(F("rebootMinitel"));
          minitel.println("V." + VERSION);
-         /*
-         minitel.println("+-+-+-+-+-+-+");
-         minitel.println("|r|e|b|o|o|t|");
-         minitel.println("+-+-+-+-+-+-+");
-         */
-         
+
          // MENU
          minitel.moveCursorXY(20,15);
          //minitel.print("puis ");

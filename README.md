@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.18b)
+# rebootMinitel (version 2026.11.18c)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 

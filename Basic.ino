@@ -2076,8 +2076,12 @@ void basFiles()
   // Liste les fichiers de la carte SD par ordre alphabétique (les programmes .BAS sans
   // leur extension). Pour ne pas garder tous les noms en mémoire, chaque passage relit le
   // dossier et cherche le plus petit nom qui vient après le dernier nom affiché.
-  const byte MAX = 64;
-  char dernier[MAX], suivant[MAX];
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+  const byte MAX = 64;  // Noms longs possibles sur l'ESP32
+#else
+  const byte MAX = 13;  // Noms 8.3 sur l'ATmega (12 caractères) : peu de pile utilisée
+#endif
+  char dernier[MAX], suivant[MAX], courant[MAX];
   dernier[0] = 0;
   bool premier = true;
   File racine = SD.open("/");
@@ -2092,9 +2096,12 @@ void basFiles()
       if (!f.isDirectory()) {
         const char* complet = f.name();
         if (complet[0] == '/') complet++;
-        if ((premier || strcmp(complet, dernier) > 0) && (!trouve || strcmp(complet, suivant) < 0)) {
-          strncpy(suivant, complet, MAX - 1);
-          suivant[MAX - 1] = 0;
+        // Les comparaisons se font sur le nom tronqué : un nom trop long ne peut pas
+        // revenir sans fin (il serait toujours « après » sa version tronquée)
+        strncpy(courant, complet, MAX - 1);
+        courant[MAX - 1] = 0;
+        if ((premier || strcmp(courant, dernier) > 0) && (!trouve || strcmp(courant, suivant) < 0)) {
+          strcpy(suivant, courant);
           taille = f.size();
           trouve = true;
         }
