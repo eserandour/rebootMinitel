@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.18a';  // Celle de rebootMinitel
+  const VERSION = '2026.11.18b';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -2697,10 +2697,12 @@
     function* aPropos() {
       wb(0x14);
       const x = Math.floor((40 - 25) / 2) + 1;  // Centré sur « rebootMinitel (2023-2026) »
-      moveXY(x, 9); puts('rebootMinitel (2023-2026)');
-      moveXY(x, 11); puts("Un projet d'Eric S\u00e9randour");
-      moveXY(x, 13); puts('Logiciel Libre (GNU GPLv3)');
-      moveXY(x, 15); puts('https://entropie.org/3615');
+      moveXY(x, 7); puts('rebootMinitel (2023-2026)');
+      moveXY(x, 9); puts("Un projet d'Eric S\u00e9randour");
+      moveXY(x, 11); puts('bas\u00e9 sur sa biblioth\u00e8que');
+      moveXY(x, 13); puts('Minitel1B_Hard (2016-2026)');
+      moveXY(x, 15); puts('Logiciel Libre (GNU GPLv3)');
+      moveXY(x, 17); puts('https://entropie.org/3615');
       moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour');
       while (true) {
         const k = yield* attendreCle();
@@ -3326,7 +3328,7 @@
         instructions: 1000,      // Instructions par seconde (0 : aussi vite que possible)
         carte: 'mega',           // 'mega' ou 'esp32' (tailles de la mémoire)
         menu: true,              // Démarrer sur l'écran d'accueil de rebootMinitel (menu, date et heure)
-        version: '2026.11.18a',  // Version de rebootMinitel affichée sur l'écran d'accueil
+        version: '2026.11.18b',  // Version de rebootMinitel affichée sur l'écran d'accueil
         accueil: true,           // Afficher l'écran d'accueil de reBASIC
         afficherOk: true,        // Afficher « Ok » quand reBASIC attend
         programme: null,         // Programme chargé au démarrage
