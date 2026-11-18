@@ -1,5 +1,7 @@
 # Minitel virtuel — rebootMinitel et reBASIC dans un navigateur
 
+<img src="../../photos/minitel-virtuel.png" height="600" alt="Le Minitel virtuel : l'écran d'accueil de rebootMinitel et le clavier du Minitel 1B">
+
 Ouvrez **`index.html`** dans un navigateur : rebootMinitel démarre sur son écran d'accueil (menu, date et heure), comme sur la carte. Tapez **1** pour entrer dans reBASIC, au clavier de l'ordinateur ou sur celui du Minitel 1B dessiné sous l'écran. La liste à droite contient les programmes du dossier [`exemples/`](../../exemples/) ; « Ouvrir… » et « Enregistrer sous… » échangent les programmes avec l'ordinateur.
 
 | Fichier | Rôle |
