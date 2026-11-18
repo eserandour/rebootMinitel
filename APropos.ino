@@ -36,7 +36,7 @@ void aPropos()
 
   minitel.moveCursorXY(1, 24);
   afficherTouche(F("SOMMAIRE"));
-  minitel.print(F(" : retour"));
+  minitel.print(F(" : retour au menu"));
 
   while (minitel.getKeyCode() != SOMMAIRE);
 }

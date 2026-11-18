@@ -28,12 +28,12 @@ void ecranAccueil()
         selectMenu(TAG_MENU_BASIC);
         break;
      case 0x32 :  // Touche 2
-        /* fin = true; */
-        /* selectMenu(TAG_MENU_???); */
+        fin = true;
+        selectMenu(TAG_MENU_VIDEOTEX);
         break;
      case 0x33 :  // Touche 3
-        /* fin = true; */
-        /* selectMenu(TAG_MENU_???); */
+        fin = true;
+        selectMenu(TAG_MENU_CARTE_SD);
         break;
      case 0x34 :  // Touche 4
         fin = true;
@@ -80,9 +80,9 @@ void ecranAccueil()
          minitel.moveCursorXY(20,18);
          minitel.println(F("1 - reBASIC"));
          minitel.moveCursorXY(20,19);
-         minitel.println(F("2 - "));
+         minitel.println(F("2 - Pages Vidéotex"));
          minitel.moveCursorXY(20,20);
-         minitel.println(F("3 - "));
+         minitel.println(F("3 - Carte SD"));
          minitel.moveCursorXY(20,21);
          minitel.println(F("4 - À propos"));
        }
@@ -105,6 +105,22 @@ void menuReglageHorloge()
 void menuBasic()
 {
   basic();
+  selectMenu(TAG_ECRAN_ACCUEIL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void menuVideotex()
+{
+  pagesVideotex();
+  selectMenu(TAG_ECRAN_ACCUEIL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void menuCarteSD()
+{
+  carteSD();
   selectMenu(TAG_ECRAN_ACCUEIL);
 }
 

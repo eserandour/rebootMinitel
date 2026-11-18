@@ -118,9 +118,9 @@ void reglageHorloge()
   if (!horlogeOK) {
     minitel.moveCursorXY(11,12);
     minitel.print(F("Horloge introuvable"));
-    minitel.moveCursorXY(12,24);  // "SOMMAIRE : retour" centré (17 caractères)
+    minitel.moveCursorXY(8,24);  // "SOMMAIRE : retour au menu" centré (25 caractères)
     afficherTouche(F("SOMMAIRE"));
-    minitel.print(F(" : retour"));
+    minitel.print(F(" : retour au menu"));
     bipErreur();
     while (minitel.getKeyCode() != SOMMAIRE);
     return;
@@ -139,7 +139,7 @@ void reglageHorloge()
   minitel.print(F(" : effacer"));
   minitel.moveCursorXY(1,24);
   afficherTouche(F("SOMMAIRE"));
-  minitel.print(F(" : retour sans modifier"));
+  minitel.print(F(" : retour au menu sans modifier"));
 
   // Saisie des 12 chiffres. Position de chaque chiffre dans "JJ/MM/AAAA  hh:mm" :
   const byte position[12] = { 0, 1, 3, 4, 6, 7, 8, 9, 12, 13, 15, 16 };

@@ -3,7 +3,7 @@
    rebootMinitel
    Copyright 2023-2026 - Eric Sérandour
 */
-   const String VERSION = "2026.11.18c";  // 19h31
+   const String VERSION = "2026.11.18d";  // 23h05
 /*
    
    This program is free software: you can redistribute it and/or modify
@@ -126,6 +126,8 @@ const byte TAG_ECRAN_ACCUEIL = 0;
 const byte TAG_MENU_REGLAGE_HORLOGE = 1;
 const byte TAG_MENU_BASIC = 2;
 const byte TAG_MENU_A_PROPOS = 3;
+const byte TAG_MENU_VIDEOTEX = 4;
+const byte TAG_MENU_CARTE_SD = 5;
 byte ecran = TAG_ECRAN_ACCUEIL;
 
 
@@ -178,7 +180,9 @@ void loop()
     case TAG_ECRAN_ACCUEIL: ecranAccueil(); break;
     case TAG_MENU_REGLAGE_HORLOGE: menuReglageHorloge(); break;
     case TAG_MENU_BASIC: menuBasic(); break;
-    case TAG_MENU_A_PROPOS: menuAPropos(); break;   
+    case TAG_MENU_VIDEOTEX: menuVideotex(); break;
+    case TAG_MENU_CARTE_SD: menuCarteSD(); break;
+    case TAG_MENU_A_PROPOS: menuAPropos(); break;
   }
 }
 

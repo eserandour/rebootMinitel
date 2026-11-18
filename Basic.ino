@@ -11,7 +11,7 @@
     CORRECTION                : efface le dernier caractère
     ANNULATION                : abandonne la ligne / interrompt le programme
     GUIDE                     : affiche l'aide (SUITE et RETOUR changent de page, ENVOI la quitte)
-    SOMMAIRE                  : interrompt le programme / quitte le BASIC
+    SOMMAIRE                  : interrompt le programme / revient au menu
 
   Une ligne qui commence par un numéro (1 à 65535) est rangée dans le programme.
   Un numéro seul supprime la ligne. Sans numéro, la ligne est exécutée tout de suite.
@@ -19,7 +19,8 @@
   Les minuscules sont converties en majuscules (sauf entre guillemets).
 
   Commandes :
-    RUN   LIST [début][-fin]   NEW   MEM   AIDE
+    RUN   LIST [début][-fin] [/P]   NEW   MEM   AIDE
+    LIST /P              : s'arrête à chaque écran plein (SUITE continue, ANNULATION arrête)
     EDIT n               : réaffiche la ligne n dans la zone de saisie pour la corriger
     RENUM [début][,pas]  : renumérote le programme (10,10 par défaut) et met à jour
                            les numéros après GOTO, GOSUB, THEN, ELSE, RESTORE et ON...
@@ -536,7 +537,7 @@ void basHelpPage(byte page)
   basNewLine();
   if (page == 0) {
     basPutsP(PSTR("Commandes :\n"));
-    basPutsP(PSTR(" RUN LIST [n][-m] NEW MEM AIDE\n"));
+    basPutsP(PSTR(" RUN LIST [n][-m] [/P] NEW MEM AIDE\n"));
     basPutsP(PSTR(" EDIT n  RENUM [début][,pas]\n"));
     basPutsP(PSTR(" SAVE \"NOM\" LOAD \"NOM\" MERGE \"NOM\"\n"));
     basPutsP(PSTR(" FILES KILL \"NOM\"\n"));
@@ -617,7 +618,7 @@ void basHelpPage(byte page)
     basKeyName(PSTR("GUIDE"));
     basPutsP(PSTR(" aide  "));
     basKeyName(PSTR("SOMMAIRE"));
-    basPutsP(PSTR(" quitte\n"));
+    basPutsP(PSTR(" menu\n"));
   }
   // Le bas de l'écran : les touches de l'aide, selon la page
   // ("RETOUR - SUITE - ENVOI : reBASIC", "RETOUR - ...", "SUITE - ...")
@@ -2279,11 +2280,46 @@ void basFileInput(boolean ligne)
 // Instructions
 //////////////////////////////////////////////////////////////////////////////////////
 
+boolean basListPages()
+{
+  // L'option /P de LIST (avant ou après les numéros de lignes)
+  basSkip();
+  if (*basP != '/') return false;
+  basP++;
+  basSkip();
+  if (*basP != 'P') { basErr = BAS_E_SYNTAXE; return false; }
+  basP++;
+  return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basListPause()
+{
+  // LIST /P : l'écran est plein. On attend SUITE (ou ENVOI) pour continuer ;
+  // ANNULATION ou SOMMAIRE arrête la liste (renvoie false).
+  basKeyName(PSTR("SUITE"));
+  basPuts(" : suite - ");
+  basKeyName(PSTR("ANNULATION"));
+  basPutsP(PSTR(" : arrêt"));
+  unsigned long k = 0;
+  while (k != SUITE && k != ENVOI && k != 0x0D && k != ANNULATION && k != SOMMAIRE) k = minitel.getKeyCode();
+  minitel.writeByte(0x0D);       // On efface la ligne des touches
+  minitel.clearLineFromCursor();
+  basCol = 0;
+  return k != ANNULATION && k != SOMMAIRE;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 void basList()
 {
+  // LIST [n][-m] [/P] : avec /P, la liste s'arrête à chaque écran plein
   unsigned int debut = 1;
   unsigned int fin = 65535;
   float v;
+  boolean pages = basListPages();
+  if (basErr) return;
   basSkip();
   if (basParseNum(&basP, &v)) { debut = (unsigned int) v; fin = debut; }
   basSkip();
@@ -2293,12 +2329,25 @@ void basList()
     basSkip();
     if (basParseNum(&basP, &v)) fin = (unsigned int) v;
   }
+  if (!pages) pages = basListPages();
+  if (basErr) return;
   char* suite = basP;  // basP ne doit pas changer pendant la liste si elle est lancée par un programme
+  byte rangees = 0;    // Rangées de l'écran déjà remplies par la liste
   for (byte* p = basFindLine(debut); p < basProgEnd() && basLineNum(p) <= fin && basErr == 0; p += 3 + p[2]) {
-    basPrintNum(basLineNum(p));
+    unsigned int n = basLineNum(p);
+    byte chiffres = (n >= 10000) ? 5 : (n >= 1000) ? 4 : (n >= 100) ? 3 : (n >= 10) ? 2 : 1;
+    // Rangées de cette ligne (une ligne de 40 caractères pile en prend deux : le Minitel passe
+    // seul à la rangée suivante, puis vient le retour à la ligne)
+    byte hauteur = (chiffres + 1 + basU8Len((char*) (p + 3))) / 40 + 1;
+    if (pages && rangees + hauteur > 22) {
+      if (!basListPause()) break;
+      rangees = 0;
+    }
+    basPrintNum(n);
     basPuts(" ");
     basPuts((char*) (p + 3));
     basNewLine();
+    rangees += hauteur;
     basCheckBreak();
   }
   basP = suite;
@@ -3183,6 +3232,29 @@ void basRun()
 
 //////////////////////////////////////////////////////////////////////////////////////
 
+void basExecuter(char* p)
+{
+  // Exécute tout de suite une ligne sans numéro (déjà en majuscules), comme si on l'avait
+  // tapée, puis affiche « Ok »
+  basP = p;
+  basStop = false;
+  basAttr = false;
+  basKey = 0;
+  basGsTop = 0;
+  basForTop = 0;
+  basWhTop = 0;
+  basRun();
+  if (basErr) basPrintError();
+  if (basCur != NULL) basCloseAll();  // Un programme s'est arrêté (fin, erreur...) : ses fichiers sont fermés
+  if (basAttr) basResetAttr();  // On revient à l'affichage normal
+  if (basCol != 0) basNewLine();
+  if (!basEditPending) basPutsP(PSTR("Ok\n"));  // Après EDIT, la ligne à corriger s'affiche aussitôt
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+char basLancer[BAS_STR_MAX + 1] = "";  // Programme à charger et lancer en entrant (menu 3)
+
 void basic()
 {
   minitel.newScreen();
@@ -3198,8 +3270,28 @@ void basic()
   basKeyName(PSTR("GUIDE"));
   basPutsP(PSTR(" : aide - "));
   basKeyName(PSTR("SOMMAIRE"));
-  basPutsP(PSTR(" : quitter\n"));
+  basPutsP(PSTR(" : retour au menu"));
+  if (basCol != 0) basNewLine();  // 40 caractères pile : le Minitel est déjà passé à la ligne
   basPutsP(PSTR("Ok\n"));
+
+  if (basLancer[0]) {
+    // Le gestionnaire de la carte SD a demandé de lancer un programme : LOAD puis RUN,
+    // affichés comme si on les avait tapés
+    snprintf_P(basLine, BAS_LINE_MAX + 1, PSTR("LOAD \"%s\""), basLancer);
+    basLancer[0] = 0;
+    basPuts(basLine);
+    basNewLine();
+    basErr = 0;
+    basCur = NULL;
+    basExecuter(basLine);
+    if (basErr == 0) {
+      strcpy_P(basLine, PSTR("RUN"));
+      basPuts(basLine);
+      basNewLine();
+      basCur = NULL;
+      basExecuter(basLine);
+    }
+  }
 
   boolean fin = false;
   while (!fin) {
@@ -3229,19 +3321,7 @@ void basic()
         if (basErr) basPrintError();
       }
       else if (*p != 0) {    // Exécution immédiate
-        basP = p;
-        basStop = false;
-        basAttr = false;
-        basKey = 0;
-        basGsTop = 0;
-        basForTop = 0;
-        basWhTop = 0;
-        basRun();
-        if (basErr) basPrintError();
-        if (basCur != NULL) basCloseAll();  // Un programme s'est arrêté (fin, erreur...) : ses fichiers sont fermés
-        if (basAttr) basResetAttr();  // On revient à l'affichage normal
-        if (basCol != 0) basNewLine();
-        if (!basEditPending) basPutsP(PSTR("Ok\n"));  // Après EDIT, la ligne à corriger s'affiche aussitôt
+        basExecuter(p);
       }
     }
   }

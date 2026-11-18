@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.18c)
+# rebootMinitel (version 2026.11.18d)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
@@ -21,6 +21,8 @@ Site : <https://entropie.org/3615>
 - [Bibliothèques](#bibliothèques)
 - [Compilation](#compilation)
 - [Utilisation](#utilisation)
+  - [Pages Vidéotex (menu 2)](#pages-vidéotex-menu-2)
+  - [Carte SD (menu 3)](#carte-sd-menu-3)
 - [Minitel virtuel](#minitel-virtuel)
 - [reBASIC](#rebasic)
   - [Saisie et touches](#saisie-et-touches)
@@ -79,13 +81,38 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 |---|---|
 | `0` | Réglage de l'horloge (saisie JJ/MM/AAAA hh:mm, `CORRECTION` pour effacer, `SOMMAIRE` pour revenir sans modifier) |
 | `1` | reBASIC |
+| `2` | Pages Vidéotex (voir ci-dessous) |
+| `3` | Carte SD (voir ci-dessous) |
 | `4` | À propos |
+
+### Pages Vidéotex (menu 2)
+
+Le menu 2 affiche les **pages Minitel** de la carte SD : les fichiers `.VDT` placés à la racine de la carte, par ordre alphabétique. Un premier écran donne le nombre de pages et les touches ; `SUITE` (ou `ENVOI`, pour le défilement automatique) affiche alors la première page. Ensuite, on ne voit que les pages : aucune explication n'est écrite par-dessus. Un fichier `.VDT` contient les octets d'une page Vidéotex, envoyés tels quels au Minitel. On en trouve en ligne, ou on les compose avec un éditeur comme [MiEdit](https://github.com/Zigazou/miedit). Le dossier [`exemples/`](exemples/) en contient deux (`DEMO1.VDT` et `DEMO2.VDT`).
+
+| Touche | Effet |
+|---|---|
+| `SUITE` | Page suivante (après la dernière, on revient à la première) |
+| `RETOUR` | Page précédente |
+| `ENVOI` | Défilement automatique, une page toutes les 10 secondes (`VDT_DUREE` dans `Videotex.ino`), ou arrêt du défilement |
+| `SOMMAIRE` | Retour au menu, même pendant l'affichage d'une page |
+
+
+### Carte SD (menu 3)
+
+Le menu 3 est un **gestionnaire de la carte SD** : il liste les fichiers de la racine de la carte par ordre alphabétique, avec leur taille, seize par écran (`SUITE` et `RETOUR` changent d'écran). Chaque fichier est repéré par une lettre, de `A` à `P` ; on tape la lettre pour le choisir, puis :
+
+| Touche | Effet |
+|---|---|
+| `1` | **Afficher** : une page Vidéotex (`.VDT`) est dessinée ; un autre fichier (`.BAS`, `.TXT`…) est affiché comme du texte, écran par écran (`SUITE` pour la suite) |
+| `2` | **Lancer** (programmes `.BAS`) : le programme est chargé dans reBASIC (`LOAD`), puis lancé (`RUN`). `SOMMAIRE` quitte ensuite reBASIC et revient au menu |
+| `3` | **Supprimer**, après confirmation par `ENVOI` |
+| `SOMMAIRE` | Retour à la liste, puis au menu |
 
 ---
 
 ## Minitel virtuel
 
-Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
+Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, pages Vidéotex, carte SD, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
 
 <img src="photos/minitel-virtuel.png" height="600" alt="Le Minitel virtuel : l'écran d'accueil de rebootMinitel et le clavier du Minitel 1B">
 
@@ -108,7 +135,7 @@ Pour apprendre à programmer en reBASIC, pas à pas et avec de nombreux exemples
 
 ```
 reBASIC - 2048 octets libres
-GUIDE : aide - SOMMAIRE : quitter
+GUIDE : aide - SOMMAIRE : retour au menu
 Ok
 10 FOR I=1 TO 5
 20 PRINT "Bonjour Minitel !"; I
@@ -130,7 +157,7 @@ RUN
 | `CORRECTION` | Efface le dernier caractère |
 | `ANNULATION` | Abandonne la ligne en cours / interrompt le programme |
 | `GUIDE` | Affiche l'aide (4 pages : `SUITE` et `RETOUR` pour changer de page, `ENVOI` pour revenir à reBASIC) |
-| `SOMMAIRE` | Interrompt le programme / quitte reBASIC (le programme en mémoire est conservé) |
+| `SOMMAIRE` | Interrompt le programme / revient au menu (le programme en mémoire est conservé) |
 
 ### Commandes
 
@@ -138,7 +165,7 @@ RUN
 |---|---|
 | `RUN` | Lance le programme (efface d'abord les variables) |
 | `EDIT n` | Réaffiche la ligne n dans la zone de saisie, pour la corriger : `CORRECTION` efface la fin, `ENVOI` valide, `ANNULATION` abandonne |
-| `LIST [début][-fin]` | Affiche le programme, ou une partie : `LIST 100`, `LIST 100-200`, `LIST -50`, `LIST 300-` |
+| `LIST [début][-fin] [/P]` | Affiche le programme, ou une partie : `LIST 100`, `LIST 100-200`, `LIST -50`, `LIST 300-`. Avec `/P`, la liste s'arrête à chaque écran plein : `SUITE` continue, `ANNULATION` arrête (`LIST /P`, `LIST 100-500 /P`) |
 | `NEW` | Efface le programme et les variables |
 | `MEM` | Affiche la mémoire libre pour le programme |
 | `RENUM [début][,pas]` | Renumérote le programme (10,10 par défaut) |
@@ -408,7 +435,7 @@ Ces tailles se règlent au début de `Basic.ino` (`BAS_PROG_SIZE`, `BAS_STR_MAX`
 
 ### Exemples
 
-Le dossier [`exemples/`](exemples/) contient dix programmes, enregistrés au format de `SAVE` : on peut les copier sur la carte microSD et les charger avec `LOAD "BALLE"`, les ouvrir dans le [Minitel virtuel](#minitel-virtuel) (bouton « Ouvrir… », ou directement dans sa liste), ou les lancer dans le [simulateur](outils/simulateur/). Ils viennent presque tous du tutoriel, qui les explique en détail ; « Minitel Matin » illustre les [attributs d'affichage](#attributs-daffichage).
+Le dossier [`exemples/`](exemples/) contient dix programmes et deux pages Vidéotex (`DEMO1.VDT` et `DEMO2.VDT`, pour le [menu 2](#pages-vidéotex-menu-2)). Les programmes sont enregistrés au format de `SAVE` : on peut les copier sur la carte microSD et les charger avec `LOAD "BALLE"`, les ouvrir dans le [Minitel virtuel](#minitel-virtuel) (bouton « Ouvrir… », ou directement dans sa liste), ou les lancer dans le [simulateur](outils/simulateur/). Ils viennent presque tous du tutoriel, qui les explique en détail ; « Minitel Matin » illustre les [attributs d'affichage](#attributs-daffichage).
 
 | Fichier | Programme |
 |---|---|
