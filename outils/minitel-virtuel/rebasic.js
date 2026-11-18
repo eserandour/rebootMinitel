@@ -3104,15 +3104,17 @@
 .rebasic-clavier .rk.rc-espace{width:calc(var(--u) * 6.4)}
 .rebasic-clavier .rk.rc-entree{width:calc(var(--u) * 1.5)}
 .rebasic-clavier .rk .rc-o,.rebasic-clavier .rk .rc-r{position:absolute;bottom:calc(100% + var(--u) * .1);font-size:calc(var(--u) * .32);font-weight:600;line-height:1;white-space:nowrap;pointer-events:none}
-.rebasic-clavier .rk .rc-o{right:calc(100% - var(--u) * .06);color:#e2ac2e}
+.rebasic-clavier .rk .rc-o{right:calc(100% - var(--u) * .06);color:#e2ac2e;transform:translateY(var(--dy, 0px))}
+.rebasic-clavier .rc-pave .rk .rc-o{right:auto;left:calc(var(--u) * -.06);bottom:calc(100% - var(--u) * .02);transform:translate(-50%, var(--dy, 0px))}
+.rebasic-clavier .rc-pave .rk .rc-o.rc-accent,.rebasic-clavier .rc-pave .rk .rc-o.rc-moyen{bottom:calc(100% - var(--u) * .02)}
 .rebasic-clavier .rk .rc-r{right:calc(var(--u) * -.04);color:#ea5a2c;font-size:calc(var(--u) * .23)}
 .rebasic-clavier .rc-bas .rk .rc-o,.rebasic-clavier .rc-bas .rk .rc-r{font-size:calc(var(--u) * .25)}
 .rebasic-clavier .rc-bas .rk .rc-o{right:auto;left:calc(var(--u) * -.08)}
 .rebasic-clavier .rk .rc-o.rc-accent{font-size:calc(var(--u) * .55);bottom:calc(100% - var(--u) * .1)}
 .rebasic-clavier .rk .rc-o.rc-moyen{font-size:calc(var(--u) * .48);bottom:calc(100% + var(--u) * .02)}
 .rebasic-clavier .rk .rc-o.rc-etoile{bottom:calc(100% - var(--u) * .09)}
-.rebasic-clavier .rk .rc-o.rc-trait{bottom:calc(100% + var(--u) * .1)}
-.rebasic-clavier .rk .rc-o.rc-trait svg{display:block;width:calc(var(--u) * .2);height:calc(var(--u) * .28)}
+.rebasic-clavier .rk .rc-o.rc-trait{bottom:calc(100% + var(--u) * .14)}
+.rebasic-clavier .rk .rc-o.rc-trait svg{display:block;width:calc(var(--u) * .15);height:calc(var(--u) * .19)}
 .rebasic-clavier .rk.rc-fn .rc-r{right:calc(var(--u) * .12)}
 .rebasic-clavier .rk .rc-l{font-size:calc(var(--u) * .25);line-height:1.05;text-align:center;font-weight:500}
 `;
@@ -3122,7 +3124,7 @@
   const SIGNES_MOYENS = ['\u2019', '*'];  // Gravés plus grands que leur dessin dans la police
   // Signes que la police dessine trop haut : on les descend (en fractions de touche) pour que
   // le milieu de chaque signe soit sur la même ligne que ses voisins
-  const DESCENTES = { '^': .05, '\u00a8': .14, '"': .03, '\u2019': .13 };
+  const DESCENTES = { '^': .05, '\u00a8': .14, '"': .227, '\u2019': -.092, '(': -.012, ')': -.012, '[': -.012, ']': -.012, '\u2191': .008 };
   const CTRL_NOMS = { I: 'TAB', H: 'BS', J: 'LF', X: 'CAN' };
 
   function creerClavierVirtuel(machine) {
@@ -3153,6 +3155,26 @@
       setTimeout(() => el.classList.remove('rc-appui'), 110);
     }
 
+    // L'apostrophe du clavier : une tête ronde et une queue légèrement courbée (largeur et
+    // hauteur en touches)
+    function apostrophe(l, h, style) {
+      return '<svg viewBox="0 0 8 12" aria-hidden="true" style="display:block;width:calc(var(--u) * ' + l +
+        ');height:calc(var(--u) * ' + h + ')' + (style ? ';' + style : '') + '">' +
+        '<circle cx="4.6" cy="3" r="1.9" fill="currentColor"/>' +
+        '<path d="M6.3 3.4 Q6.1 7.4 3.4 10.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    }
+
+    // La ponctuation gravée sur les touches , . ; : : tous les points du bas (le point, la tête
+    // de la virgule) sont au même endroit, et le point du haut de ; et : aussi
+    function ponctuation(car) {
+      const point = (y) => '<circle cx="4.6" cy="' + y + '" r="1.9" fill="currentColor"/>';
+      const queue = '<path d="M6.3 11.4 Q6.1 15.4 3.4 18.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>';
+      const haut = car === ';' || car === ':' ? point(3) : '';
+      const bas = point(11) + (car === ',' || car === ';' ? queue : '');
+      return '<svg viewBox="0 0 8 20" aria-hidden="true" style="display:block;width:calc(var(--u) * .16);' +
+        'height:calc(var(--u) * .4);transform:translateY(calc(var(--u) * .08))">' + haut + bas + '</svg>';
+    }
+
     function touche(contenu, action, opt) {
       opt = opt || {};
       const b = document.createElement('button');
@@ -3168,12 +3190,16 @@
           (opt.orange === '*' ? ' rc-etoile' : '') +  // L'astérisque de la police est dessiné trop haut
           (opt.orange === '\u00b4' || opt.orange === '`' ? ' rc-trait' : '');
         s.textContent = opt.orange;
-        if (DESCENTES[opt.orange]) s.style.transform = 'translateY(calc(var(--u) * ' + DESCENTES[opt.orange] + '))';
+        if (DESCENTES[opt.orange]) s.style.setProperty('--dy', 'calc(var(--u) * ' + DESCENTES[opt.orange] + ')');
         if (s.classList.contains('rc-trait')) {
-          // Accent aigu ou grave : un trait fin et penché, comme sur le clavier
-          const d = opt.orange === '`' ? 'M2 2 L6 10' : 'M6 2 L2 10';
-          s.innerHTML = '<svg viewBox="0 0 8 12" aria-hidden="true"><path d="' + d +
-            '" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+          // Accent aigu ou grave : un petit trait penché et légèrement courbé, comme sur le clavier
+          const d = opt.orange === '`' ? 'M1.8 2 Q3.1 5.1 6 8' : 'M6.2 2 Q4.9 5.1 2 8';
+          s.innerHTML = '<svg viewBox="0 0 8 10" aria-hidden="true"><path d="' + d +
+            '" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
+        }
+        if (opt.orange === '\u2019') {
+          // Apostrophe : une tête ronde et une queue courbée, comme sur le clavier
+          s.innerHTML = apostrophe('.13', '.2');
         }
         b.appendChild(s);
       }
@@ -3246,7 +3272,17 @@
     pave.className = 'rc-pave';
     for (const [car, autre] of [['1', '!'], ['2', '"'], ['3', '#'], ['4', '$'], ['5', '%'], ['6', '&'],
       ['7', "'"], ['8', '('], ['9', ')'], ['*', '['], ['0', '^'], ['#', ']']]) {
-      pave.appendChild(caractere(car, autre));
+      const k = caractere(car, autre);
+      if (car === '*') {
+        // L'astérisque de la police est petit et dessiné trop haut : on l'agrandit à la taille
+        // de # et on le centre comme 0 et #
+        const t = document.createElement('span');
+        t.textContent = '*';
+        t.style.fontSize = 'calc(var(--u) * .72)';
+        t.style.transform = 'translateY(calc(var(--u) * .156))';
+        k.replaceChild(t, k.firstChild);
+      }
+      pave.appendChild(k);
     }
     haut.appendChild(pave);
     clavier.appendChild(haut);
@@ -3263,7 +3299,17 @@
     let r = rang(2.15);
     r.appendChild(touche('Esc', () => { envoyer(0x1B); ctrl = false; etat(); }, { cls: 'rc-esc', code: 0x1B }));
     for (const [car, autre] of [[',', '<'], ['.', '>'], ["'", '@'], [';', '+'], ['-', '='], [':', '*'], ['?', '/']]) {
-      r.appendChild(caractere(car, autre));
+      const k = caractere(car, autre);
+      // L'apostrophe, la virgule et le point-virgule gravés sur les touches, dessinés comme
+      // l'apostrophe au-dessus du 7 (la virgule en bas, l'apostrophe en haut)
+      const dessin = car === "'" ? apostrophe('.16', '.24', 'transform:translateY(calc(var(--u) * -.07))') :
+        ',.;:'.includes(car) ? ponctuation(car) : null;
+      if (dessin) {
+        const t = document.createElement('span');
+        t.innerHTML = dessin;
+        k.replaceChild(t.firstChild, k.firstChild);
+      }
+      r.appendChild(k);
     }
 
     // Les lettres (AZERTY)
