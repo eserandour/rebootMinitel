@@ -85,6 +85,8 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 
 Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
 
+<img src="photos/minitel-virtuel.png" height="600" alt="Le Minitel virtuel : l'écran d'accueil de rebootMinitel et le clavier du Minitel 1B">
+
 - **C'est le même reBASIC** : `rebasic.js` est un portage ligne à ligne de `Basic.ino` (mêmes instructions, mêmes messages d'erreur, mêmes limites que l'Arduino Mega ou l'ESP32, nombres en `float` 32 bits). Les caractères passent par la même table que Minitel1B_Hard, et l'écran suit les règles du STUM 1B. Le rythme aussi est celui de la carte : liaison à 4800 bauds, 1000 instructions par seconde.
 - **Vérifié contre le simulateur** : `test/comparer.js` exécute tous les exemples du tutoriel dans les deux et compare les écrans case par case.
 - **La carte SD** est gardée dans le navigateur ; les boutons « Ouvrir… » et « Enregistrer sous… » échangent les programmes avec l'ordinateur, au format de `SAVE` : un programme écrit dans la page peut être copié sur la carte microSD, et inversement.
