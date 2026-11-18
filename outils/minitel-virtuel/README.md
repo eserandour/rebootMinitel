@@ -33,7 +33,7 @@ Vérifié contre le simulateur C officiel (`outils/simulateur`) : sur les 117 é
 </script>
 ```
 
-L'écran d'accueil de rebootMinitel s'affiche, comme sur la carte : le logo entropie LAB, la version, le menu, et la date et l'heure en bas de l'écran, mises à jour chaque seconde. On tape **1** pour entrer dans reBASIC, **0** pour régler l'horloge, **2** pour les pages Vidéotex, **3** pour la carte SD, **4** pour « À propos » ; **SOMMAIRE** ramène à l'accueil. L'heure réglée est gardée dans le navigateur (c'est un décalage par rapport à l'heure de l'ordinateur). Avec `menu: false`, la page démarre directement dans reBASIC ; et si un programme est lancé au démarrage (`lancer`), il démarre aussitôt, sans passer par l'accueil.
+L'écran d'accueil de rebootMinitel s'affiche, comme sur la carte : le logo entropie LAB, la version, le menu, et la date et l'heure en bas de l'écran, mises à jour chaque seconde. On tape **1** pour entrer dans reBASIC, **0** pour régler l'horloge, **2** pour les pages Vidéotex, **3** pour la carte SD, **4** pour Pong, **5** pour « À propos » ; **SOMMAIRE** ramène à l'accueil. L'heure réglée est gardée dans le navigateur (c'est un décalage par rapport à l'heure de l'ordinateur). Avec `menu: false`, la page démarre directement dans reBASIC ; et si un programme est lancé au démarrage (`lancer`), il démarre aussitôt, sans passer par l'accueil.
 
 Ou sans écrire de JavaScript, avec le programme dans la page :
 

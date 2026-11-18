@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.18d';  // Celle de rebootMinitel
+  const VERSION = '2026.11.19a';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -2677,7 +2677,7 @@
     }
 
     function* ecranAccueil() {
-      // Renvoie la touche choisie (0x30 à 0x34), ou 0x31 si la page envoie une commande
+      // Renvoie la touche choisie (0x30 à 0x35), ou 0x31 si la page envoie une commande
       // (lancer un programme : on va tout de suite dans reBASIC, sans dessiner l'accueil)
       if (env.commandeEnAttente()) return 0x31;
       let seconde = -1;
@@ -2697,24 +2697,25 @@
       moveRight(5); println('|_______ \\____|__  /______  /');
       moveRight(13); println('\\/       \\/       \\/');
       // reboot
-      for (let i = 0; i < 3; i++) wb(0x0A);
+      for (let i = 0; i < 2; i++) wb(0x0A);
       println('rebootMinitel');
       println('V.' + env.versionReboot);
       // MENU
-      moveXY(20, 15);
+      moveXY(20, 14);
       attributs(INVERSION_FOND);
       puts('MENU');
       attributs(FOND_NORMAL);
-      moveXY(20, 17); println('0 - R\u00e9glage Horloge');
-      moveXY(20, 18); println('1 - reBASIC');
-      moveXY(20, 19); println('2 - Pages Vid\u00e9otex');
-      moveXY(20, 20); println('3 - Carte SD');
+      moveXY(20, 16); println('0 - R\u00e9glage Horloge');
+      moveXY(20, 17); println('1 - reBASIC');
+      moveXY(20, 18); println('2 - Pages Vid\u00e9otex');
+      moveXY(20, 19); println('3 - Carte SD');
+      moveXY(20, 20); println('4 - Pong');
       moveXY(20, 21);
-      println('4 - \u00c0 propos');  // Le Minitel affiche « A propos » : pas de majuscule accentuée
+      println('5 - \u00c0 propos');  // Le Minitel affiche « A propos » : pas de majuscule accentuée
       while (true) {
         if (env.commandeEnAttente()) return 0x31;
         const k = env.cle();
-        if (k >= 0x30 && k <= 0x34) return k;
+        if (k >= 0x30 && k <= 0x35) return k;
         // L'horloge, en bas de l'écran, mise à jour à chaque seconde
         if (env.horlogeOK) {
           const t = env.horloge();
@@ -2997,6 +2998,162 @@
       }
     }
 
+    // Pong (menu 4), comme Pong.ino : positions de la balle en 1/16 de point
+    const PONG_HAUT = 3, PONG_BAS = 68, PONG_X_GAUCHE = 3, PONG_X_DROITE = 76, PONG_RAQUETTE = 9,
+      PONG_PAS = 3, PONG_GAGNANT = 5, PONG_IMAGE = 60;
+
+    function* pongPartie(mode) {
+      // Une partie. mode : 0 Minitel contre Minitel (sans fin), 1 un joueur, 2 deux joueurs.
+      // Renvoie 0 si l'on a quitté (SOMMAIRE), 1 ou 2 pour le gagnant (gauche, droite).
+      const deuxJoueurs = (mode === 2);
+      let bx = 0, by = 0, vx = 0, vy = 0, g = 0, d = 0, scoreG = 0, scoreD = 0;
+      const fixe = (x, y) => (x === 39 && y > PONG_HAUT && y < PONG_BAS && (y - PONG_HAUT - 2) % 4 === 0) ||
+        (x === PONG_X_GAUCHE && y >= g && y < g + PONG_RAQUETTE) || (x === PONG_X_DROITE && y >= d && y < d + PONG_RAQUETTE);
+      const balle = (cases, allume) => {
+        const x = bx >> 4, y = by >> 4;
+        for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+          if (allume || !fixe(x + dx, y + dy)) gfxMark(cases, x + dx, y + dy, allume);
+        }
+      };
+      const raquette = (cases, x, haut, allume) => { for (let y = haut; y < haut + PONG_RAQUETTE; y++) gfxMark(cases, x, y, allume); };
+      const bouger = (haut, dy) => Math.min(PONG_BAS - PONG_RAQUETTE, Math.max(PONG_HAUT + 1, haut + dy));
+      const automate = (haut, x) => {
+        // Une raquette jouée par le Minitel (comme pongAutomate)
+        const vient = (x === PONG_X_DROITE) ? (vx > 0 && bx > (30 << 4)) : (vx < 0 && bx < (49 << 4));
+        if (!vient) return haut;
+        const cible = (by >> 4) - Math.trunc(PONG_RAQUETTE / 2);
+        if (cible >= haut - 1 && cible <= haut + 1) return haut;
+        return bouger(haut, cible < haut ? -1 : 1);
+      };
+      const score = () => {
+        // Symétrique par rapport au milieu : unités de gauche en 17-18, premier chiffre de
+        // droite en 23-24 (comme pongScore)
+        const tg = String(scoreG), td = String(scoreD);
+        moveXY(19 - 2 * tg.length, 1);
+        wb(0x1B); wb(0x4E);  // Double largeur
+        puts(tg);
+        moveXY(23, 1);
+        wb(0x1B); wb(0x4E);  // Un positionnement remet la taille normale
+        puts(td);
+        wb(0x1B); wb(GRANDEUR_NORMALE);
+        col = 0;
+      };
+      const service = (vers) => {
+        bx = 39 << 4; by = Math.trunc((PONG_HAUT + PONG_BAS) / 2) << 4;
+        vx = vers < 0 ? -16 : 16;
+        vy = Math.floor(env.hasard() * 25) - 12;
+      };
+      newScreen(); wb(0x14);
+      gfxClear();
+      let cases = new Uint8Array(960);
+      for (let x = 0; x < 80; x++) { gfxMark(cases, x, PONG_HAUT, true); gfxMark(cases, x, PONG_BAS, true); }
+      for (let y = PONG_HAUT + 2; y < PONG_BAS; y += 4) gfxMark(cases, 39, y, true);
+      g = d = Math.trunc((PONG_HAUT + PONG_BAS - PONG_RAQUETTE) / 2);
+      raquette(cases, PONG_X_GAUCHE, g, true);
+      raquette(cases, PONG_X_DROITE, d, true);
+      gfxFlush(cases);
+      score();
+      service(env.hasard() < 0.5 ? 1 : -1);
+      let image = env.millis();
+      let attente = env.millis() + 1000;
+      while (true) {
+        if (env.commandeEnAttente()) return 0;
+        let k = env.cle();
+        if (k === SOMMAIRE) return 0;
+        if (k >= 0x61 && k <= 0x7A) k -= 32;
+        if (((k === 0x41 || k === 0x51) && mode !== 0) || ((k === 0x50 || k === 0x4D) && deuxJoueurs)) {
+          cases = new Uint8Array(960);
+          const gauche = (k === 0x41 || k === 0x51);
+          const x = gauche ? PONG_X_GAUCHE : PONG_X_DROITE;
+          const dy = (k === 0x41 || k === 0x50) ? -PONG_PAS : PONG_PAS;
+          if (gauche) { raquette(cases, x, g, false); g = bouger(g, dy); raquette(cases, x, g, true); }
+          else { raquette(cases, x, d, false); d = bouger(d, dy); raquette(cases, x, d, true); }
+          gfxFlush(cases);
+        }
+        if (env.millis() - image < PONG_IMAGE || env.millis() < attente) {
+          yield { t: 'temps', fin: env.millis() + 10 };
+          continue;
+        }
+        image = env.millis();
+        cases = new Uint8Array(960);
+        if (!deuxJoueurs) {
+          const haut = automate(d, PONG_X_DROITE);
+          if (haut !== d) { raquette(cases, PONG_X_DROITE, d, false); d = haut; raquette(cases, PONG_X_DROITE, d, true); }
+        }
+        if (mode === 0) {
+          const haut = automate(g, PONG_X_GAUCHE);
+          if (haut !== g) { raquette(cases, PONG_X_GAUCHE, g, false); g = haut; raquette(cases, PONG_X_GAUCHE, g, true); }
+        }
+        balle(cases, false);
+        bx += vx; by += vy;
+        let x = bx >> 4, y = by >> 4;
+        if (y <= PONG_HAUT) { by = (PONG_HAUT + 1) << 4; vy = -vy; env.son(440, 20); }
+        if (y + 1 >= PONG_BAS) { by = (PONG_BAS - 2) << 4; vy = -vy; env.son(440, 20); }
+        y = by >> 4;
+        if (vx < 0 && x <= PONG_X_GAUCHE + 1 && x >= PONG_X_GAUCHE - 1 && y + 1 >= g && y <= g + PONG_RAQUETTE - 1) {
+          bx = (PONG_X_GAUCHE + 1) << 4; vx = -vx + 1;
+          vy = (y - (g + Math.trunc(PONG_RAQUETTE / 2))) * 5;
+          env.son(880, 20);
+        }
+        if (vx > 0 && x + 1 >= PONG_X_DROITE - 1 && x + 1 <= PONG_X_DROITE + 1 && y + 1 >= d && y <= d + PONG_RAQUETTE - 1) {
+          bx = (PONG_X_DROITE - 2) << 4; vx = -vx - 1;
+          vy = (y - (d + Math.trunc(PONG_RAQUETTE / 2))) * 5;
+          env.son(880, 20);
+        }
+        vx = Math.max(-40, Math.min(40, vx));
+        x = bx >> 4;
+        if (x < 0 || x > 78) {
+          if (x < 0) scoreD++; else scoreG++;
+          env.son(220, 150);
+          gfxFlush(cases);
+          score();
+          if (mode !== 0 && scoreG === PONG_GAGNANT) return 1;
+          if (mode !== 0 && scoreD === PONG_GAGNANT) return 2;
+          service(x < 0 ? 1 : -1);
+          attente = env.millis() + 1000;
+          continue;
+        }
+        balle(cases, true);
+        gfxFlush(cases);
+        while (env.fileOctets() > 64) yield ATTENTE_FLUX;
+      }
+    }
+
+    function* pong() {
+      // Menu 4 : le choix du nombre de joueurs, puis les parties (comme pong() dans Pong.ino)
+      while (true) {
+        newScreen(); wb(0x14);
+        moveXY(1, 3); afficherTouche(' Pong ');
+        moveXY(1, 6); puts('0 - Minitel contre Minitel');
+        moveXY(1, 8); puts('1 - Un joueur (contre le Minitel)');
+        moveXY(1, 10); puts('2 - Deux joueurs');
+        moveXY(1, 14); puts('Joueur de gauche : A monte, Q descend');
+        moveXY(1, 16); puts('Joueur de droite : P monte, M descend');
+        moveXY(1, 19); puts('Le premier \u00e0 5 points gagne');
+        moveXY(1, 20); puts('(Minitel contre Minitel : sans fin).');
+        moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour au menu');
+        let k = 0;
+        while (k !== 0x30 && k !== 0x31 && k !== 0x32 && k !== SOMMAIRE) { k = yield* attendreCle(); if (k === 0) return; }
+        if (k === SOMMAIRE) break;
+        const mode = k - 0x30;
+        const gagnant = yield* pongPartie(mode);
+        if (gagnant === 0) break;
+        // Fin de la partie : le gagnant et ENVOI, centrés sur la rangée du bas
+        const message = mode === 1 ? (gagnant === 1 ? 'Vous avez gagn\u00e9 !' : 'Le Minitel a gagn\u00e9 !') :
+          (gagnant === 1 ? 'La gauche a gagn\u00e9 !' : 'La droite a gagn\u00e9 !');
+        // Centrage exact : un nombre pair de caractères (deux ou trois espaces avant ENVOI)
+        const espaces = (message.length % 2 === 1) ? '  ' : '   ';
+        moveXY((40 - (message.length + espaces.length + 15)) / 2 + 1, 24);
+        puts(message + espaces); afficherTouche('ENVOI'); puts(' : rejouer');
+        yield* bipOK();
+        k = 0;
+        while (k !== ENVOI && k !== SOMMAIRE) { k = yield* attendreCle(); if (k === 0) return; }
+        if (k === SOMMAIRE) break;
+      }
+      gfxClear();
+      newScreen();
+    }
+
     function* systeme() {
       // La boucle de rebootMinitel : accueil, puis le menu choisi, puis retour à l'accueil
       while (true) {
@@ -3009,7 +3166,8 @@
         }
         else if (choix === 0x32) yield* pagesVideotex();
         else if (choix === 0x33) yield* carteSD();
-        else if (choix === 0x34) yield* aPropos();
+        else if (choix === 0x34) yield* pong();
+        else if (choix === 0x35) yield* aPropos();
         newScreen();
       }
     }
