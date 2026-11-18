@@ -140,7 +140,7 @@ Les lignes sont exécutées dans l'ordre des numéros, quel que soit l'ordre dan
 
 ## Voir, modifier et effacer des lignes
 
-- `LIST` affiche le programme. `LIST 20` affiche la ligne 20, `LIST 10-20` les lignes 10 à 20.
+- `LIST` affiche le programme. `LIST 20` affiche la ligne 20, `LIST 10-20` les lignes 10 à 20. Pour un long programme, `LIST /P` s'arrête à chaque écran plein : `SUITE` affiche la suite, `ANNULATION` arrête.
 - Pour **modifier** une ligne, retapez-la entièrement avec le même numéro : la nouvelle remplace l'ancienne. Ou bien utilisez `EDIT` (voir plus bas).
 - Pour **insérer** une ligne, choisissez un numéro intermédiaire : `15` se place entre `10` et `20`.
 - Pour **supprimer** une ligne, tapez seulement son numéro.
@@ -1749,11 +1749,11 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 | CORRECTION | efface le dernier caractère |
 | ANNULATION | abandonne la ligne ; interrompt le programme |
 | GUIDE | affiche l'aide (SUITE, RETOUR, ENVOI pour revenir) |
-| SOMMAIRE | interrompt le programme ; quitte reBASIC |
+| SOMMAIRE | interrompt le programme ; revient au menu |
 
 ## Commandes
 
-`RUN` · `LIST [début][-fin]` · `EDIT n` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `FILES` · `KILL "NOM"`
+`RUN` · `LIST [début][-fin] [/P]` · `EDIT n` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `FILES` · `KILL "NOM"`
 
 ## Instructions
 
