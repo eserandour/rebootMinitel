@@ -6,6 +6,8 @@ Grâce à la **carte SD** du shield, reBASIC enregistre et recharge les programm
 
 reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED ou un relais, faire varier une luminosité (MLI), lire un bouton ou un interrupteur, mesurer une tension sur une entrée analogique (potentiomètre, capteur de lumière ou de température…). Le Minitel devient ainsi l'écran et le clavier de petites expériences d'électronique (ou littéraires), programmées en BASIC.
 
+Pas de Minitel sous la main ? Le **[Minitel virtuel](#minitel-virtuel)** fait tourner rebootMinitel et reBASIC dans un simple navigateur, sur l'écran et le clavier d'un Minitel 1B dessinés à l'identique. C'est le même reBASIC que sur la carte : on peut y écrire un programme, l'enregistrer sur l'ordinateur, puis le copier sur la carte SD du vrai Minitel, et inversement. Sa bibliothèque JavaScript `rebasic.js` permet aussi de mettre un Minitel qui exécute un programme reBASIC dans n'importe quelle page web.
+
 Copyright 2023-2026 — Eric Sérandour — Logiciel libre sous licence [GNU GPLv3](LICENSE).
 Site : <https://entropie.org/3615>
 
