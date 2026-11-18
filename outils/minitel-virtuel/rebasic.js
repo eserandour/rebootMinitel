@@ -3103,14 +3103,26 @@
 .rebasic-clavier .rk.rc-verrou::after{content:"";position:absolute;top:calc(var(--u) * .12);right:calc(var(--u) * .12);width:calc(var(--u) * .12);height:calc(var(--u) * .12);border-radius:50%;background:#ffb547;box-shadow:0 0 6px #ffb547}
 .rebasic-clavier .rk.rc-espace{width:calc(var(--u) * 6.4)}
 .rebasic-clavier .rk.rc-entree{width:calc(var(--u) * 1.5)}
-.rebasic-clavier .rk .rc-o,.rebasic-clavier .rk .rc-r{position:absolute;bottom:calc(100% + var(--u) * .1);font-size:calc(var(--u) * .27);font-weight:600;line-height:1;white-space:nowrap;pointer-events:none}
-.rebasic-clavier .rk .rc-o{left:calc(var(--u) * -.08);color:#ec8f42}
-.rebasic-clavier .rk .rc-r{right:calc(var(--u) * -.04);color:#e1503d;font-size:calc(var(--u) * .23)}
+.rebasic-clavier .rk .rc-o,.rebasic-clavier .rk .rc-r{position:absolute;bottom:calc(100% + var(--u) * .1);font-size:calc(var(--u) * .32);font-weight:600;line-height:1;white-space:nowrap;pointer-events:none}
+.rebasic-clavier .rk .rc-o{right:calc(100% - var(--u) * .06);color:#e2ac2e}
+.rebasic-clavier .rk .rc-r{right:calc(var(--u) * -.04);color:#ea5a2c;font-size:calc(var(--u) * .23)}
 .rebasic-clavier .rc-bas .rk .rc-o,.rebasic-clavier .rc-bas .rk .rc-r{font-size:calc(var(--u) * .25)}
+.rebasic-clavier .rc-bas .rk .rc-o{right:auto;left:calc(var(--u) * -.08)}
+.rebasic-clavier .rk .rc-o.rc-accent{font-size:calc(var(--u) * .55);bottom:calc(100% - var(--u) * .1)}
+.rebasic-clavier .rk .rc-o.rc-moyen{font-size:calc(var(--u) * .48);bottom:calc(100% + var(--u) * .02)}
+.rebasic-clavier .rk .rc-o.rc-etoile{bottom:calc(100% - var(--u) * .09)}
+.rebasic-clavier .rk .rc-o.rc-trait{bottom:calc(100% + var(--u) * .1)}
+.rebasic-clavier .rk .rc-o.rc-trait svg{display:block;width:calc(var(--u) * .2);height:calc(var(--u) * .28)}
+.rebasic-clavier .rk.rc-fn .rc-r{right:calc(var(--u) * .12)}
 .rebasic-clavier .rk .rc-l{font-size:calc(var(--u) * .25);line-height:1.05;text-align:center;font-weight:500}
 `;
 
   const CONNEXION_FIN = 0x1349;
+  const ACCENTS_GRAVES = ['^', '\u00b4', '`', '\u00a8', '"'];
+  const SIGNES_MOYENS = ['\u2019', '*'];  // Gravés plus grands que leur dessin dans la police
+  // Signes que la police dessine trop haut : on les descend (en fractions de touche) pour que
+  // le milieu de chaque signe soit sur la même ligne que ses voisins
+  const DESCENTES = { '^': .05, '\u00a8': .14, '"': .03, '\u2019': .13 };
   const CTRL_NOMS = { I: 'TAB', H: 'BS', J: 'LF', X: 'CAN' };
 
   function creerClavierVirtuel(machine) {
@@ -3148,7 +3160,23 @@
       b.className = 'rk' + (opt.cls ? ' ' + opt.cls : '');
       if (opt.html) b.innerHTML = contenu;
       else b.textContent = contenu;
-      if (opt.orange) { const s = document.createElement('span'); s.className = 'rc-o'; s.textContent = opt.orange; b.appendChild(s); }
+      if (opt.orange) {
+        // Les accents et les apostrophes sont gravés en grand : on les agrandit pour qu'ils se voient
+        const s = document.createElement('span');
+        s.className = 'rc-o' + (ACCENTS_GRAVES.includes(opt.orange) ? ' rc-accent' : '') +
+          (SIGNES_MOYENS.includes(opt.orange) ? ' rc-moyen' : '') +
+          (opt.orange === '*' ? ' rc-etoile' : '') +  // L'astérisque de la police est dessiné trop haut
+          (opt.orange === '\u00b4' || opt.orange === '`' ? ' rc-trait' : '');
+        s.textContent = opt.orange;
+        if (DESCENTES[opt.orange]) s.style.transform = 'translateY(calc(var(--u) * ' + DESCENTES[opt.orange] + '))';
+        if (s.classList.contains('rc-trait')) {
+          // Accent aigu ou grave : un trait fin et penché, comme sur le clavier
+          const d = opt.orange === '`' ? 'M2 2 L6 10' : 'M6 2 L2 10';
+          s.innerHTML = '<svg viewBox="0 0 8 12" aria-hidden="true"><path d="' + d +
+            '" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+        }
+        b.appendChild(s);
+      }
       if (opt.rouge) { const s = document.createElement('span'); s.className = 'rc-r'; s.textContent = opt.rouge; b.appendChild(s); }
       if (opt.titre) b.title = opt.titre;
       b.addEventListener('mousedown', (e) => e.preventDefault());
@@ -3183,7 +3211,7 @@
         if (maj === 1) maj = 0;
         ctrl = false;
         etat();
-      }, Object.assign({ orange: lettre ? null : autre === '^' ? '\u2191' : autre, rouge: lettre ? CTRL_NOMS[car] : null }, opt));
+      }, Object.assign({ orange: lettre ? null : autre === '^' ? '\u2191' : autre === "'" ? '\u2019' : autre, rouge: lettre ? CTRL_NOMS[car] : null }, opt));
       parCode[car.charCodeAt(0)] = b;
       if (lettre) parCode[car.toLowerCase().charCodeAt(0)] = b;
       if (autre) parCode[autre.charCodeAt(0)] = b;
