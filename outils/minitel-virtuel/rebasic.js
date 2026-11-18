@@ -3106,6 +3106,7 @@
 .rebasic-clavier .rk .rc-o,.rebasic-clavier .rk .rc-r{position:absolute;bottom:calc(100% + var(--u) * .1);font-size:calc(var(--u) * .27);font-weight:600;line-height:1;white-space:nowrap;pointer-events:none}
 .rebasic-clavier .rk .rc-o{left:calc(var(--u) * -.08);color:#ec8f42}
 .rebasic-clavier .rk .rc-r{right:calc(var(--u) * -.04);color:#e1503d;font-size:calc(var(--u) * .23)}
+.rebasic-clavier .rc-bas .rk .rc-o,.rebasic-clavier .rc-bas .rk .rc-r{font-size:calc(var(--u) * .25)}
 .rebasic-clavier .rk .rc-l{font-size:calc(var(--u) * .25);line-height:1.05;text-align:center;font-weight:500}
 `;
 
@@ -3240,6 +3241,8 @@
     // Les lettres (AZERTY)
     r = rang(1.15);
     for (const c of 'AZERTYUIOP') r.appendChild(caractere(c));
+    // TAB paraît trop haut sous la rangée de ponctuation : on le rapproche du I
+    parCode[0x49].querySelector('.rc-r').style.bottom = 'calc(100% + var(--u) * .08)';
     r = rang(0.15);
     ctrlTouche = touche('Ctrl', () => { ctrl = !ctrl; etat(); }, { cls: 'rc-ctrl', titre: 'Ctrl' });
     r.appendChild(ctrlTouche);
@@ -3254,8 +3257,9 @@
     majs.push(m2);
     r.appendChild(m2);
 
-    // Les flèches, l'espace et le retour chariot
+    // Les flèches, l'espace et le retour chariot : écritures orange et rouges de même taille
     r = rang(0.15);
+    r.classList.add('rc-bas');
     r.appendChild(touche('\u2191', () => envoyer(FLECHE_HAUT), { orange: 'Sup. L', code: FLECHE_HAUT }));
     r.appendChild(touche('\u2193', () => envoyer(FLECHE_BAS), { orange: 'Ins. L', code: FLECHE_BAS }));
     const espace = touche('', () => { envoyer(0x20); if (maj === 1) maj = 0; ctrl = false; etat(); }, { cls: 'rc-espace', titre: 'Espace' });
