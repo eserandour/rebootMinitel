@@ -24,6 +24,7 @@ typedef bool boolean;
 #define strlen_P strlen
 #define strncmp_P strncmp
 #define strcasecmp_P strcasecmp
+#define snprintf_P snprintf
 #define pgm_read_byte(p) (*(const unsigned char*)(p))
 
 #define HIGH 1
