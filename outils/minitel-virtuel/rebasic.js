@@ -3086,7 +3086,7 @@
 .rebasic-clavier-cadre{container-type:inline-size;width:100%}
 .rebasic-clavier{--u:40px;--u:calc(100cqw / 16.6);--g:calc(var(--u) * .2);background:linear-gradient(175deg,#4e3e37,#3e312c 60%,#372b26);border-radius:6px 6px 18px 18px;padding:calc(var(--u) * .55) calc(var(--u) * .35) calc(var(--u) * .4);box-shadow:inset 0 1px 0 #ffffff1c,0 10px 24px -12px #000a;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 .rebasic-clavier .rc-haut{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:calc(var(--u) * .55)}
-.rebasic-clavier .rc-gauche{display:flex;flex-direction:column;gap:calc(var(--u) * 1.15);padding-top:calc(var(--u) * .1)}
+.rebasic-clavier .rc-gauche{display:flex;flex-direction:column;gap:calc(var(--u) * 1.47);padding-top:calc(var(--u) * .1)}
 .rebasic-clavier .rc-fonctions{display:grid;grid-template-columns:repeat(4,auto);gap:calc(var(--u) * .62) calc(var(--u) * .3);margin-top:calc(var(--u) * .95)}
 .rebasic-clavier .rc-pave{display:grid;grid-template-columns:repeat(3,var(--u));gap:calc(var(--u) * .5) calc(var(--u) * .45);margin-top:calc(var(--u) * .1)}
 .rebasic-clavier .rc-rang{display:flex;gap:var(--g);margin-top:calc(var(--u) * .5)}
@@ -3110,7 +3110,7 @@
 `;
 
   const CONNEXION_FIN = 0x1349;
-  const CTRL_NOMS = { I: 'TAB', H: 'BS', J: 'LF', X: 'Can' };
+  const CTRL_NOMS = { I: 'TAB', H: 'BS', J: 'LF', X: 'CAN' };
 
   function creerClavierVirtuel(machine) {
     const cadre = document.createElement('div');
@@ -3189,11 +3189,12 @@
       return b;
     }
 
-    function fonction(nom, code, cls) {
-      return touche(nom, () => { envoyer(code); maj = maj === 2 ? 2 : 0; ctrl = false; etat(); }, { cls: 'rc-fn' + (cls ? ' ' + cls : ''), code });
+    function fonction(nom, code, cls, orange, rouge) {
+      return touche(nom, () => { envoyer(code); maj = maj === 2 ? 2 : 0; ctrl = false; etat(); }, { cls: 'rc-fn' + (cls ? ' ' + cls : ''), code, orange, rouge });
     }
 
-    // Le haut : Connexion/Fin et Fnct, les touches de fonction, le pavé numérique
+    // Le haut : Connexion/Fin et Fnct (Fnct à la hauteur de Guide), les touches de fonction
+    // avec les caractères gravés au-dessus, le pavé numérique
     const haut = document.createElement('div');
     haut.className = 'rc-haut';
     const gauche = document.createElement('div');
@@ -3204,10 +3205,12 @@
 
     const fonctions = document.createElement('div');
     fonctions.className = 'rc-fonctions';
-    for (const [nom, code, cls] of [
-      ['Sommaire', SOMMAIRE], ['Annulation', ANNULATION], ['Retour', RETOUR], ['R\u00e9p\u00e9tition', REPETITION],
-      ['Guide', GUIDE], ['Correction', CORRECTION], ['Suite', SUITE], ['Envoi', ENVOI, 'rc-envoi']
-    ]) fonctions.appendChild(fonction(nom, code, cls));
+    for (const [nom, code, cls, orange, rouge] of [
+      ['Sommaire', SOMMAIRE, '', '^'], ['Annulation', ANNULATION, '', '\\', '\u00a3'],
+      ['Retour', RETOUR, '', '\u00b4', '\u0152'], ['R\u00e9p\u00e9tition', REPETITION, '', '{', '\u0153'],
+      ['Guide', GUIDE, '', '\u00a8'], ['Correction', CORRECTION, '', '\u00a7', '\u00e7'],
+      ['Suite', SUITE, '', '`', '\u00df'], ['Envoi', ENVOI, 'rc-envoi', '}']
+    ]) fonctions.appendChild(fonction(nom, code, cls, orange, rouge));
     haut.appendChild(fonctions);
 
     const pave = document.createElement('div');
@@ -3265,8 +3268,13 @@
     fd.querySelector('.rc-r').style.right = 'auto';
     fd.querySelector('.rc-r').style.left = 'calc(var(--u) * -.38)';
     r.appendChild(fd);
-    const entree = touche('\u21b5', () => envoyer(0x0D), { cls: 'rc-entree', rouge: 'E. Page', titre: 'Retour chariot' });
+    const entree = touche('\u21b5', () => envoyer(0x0D), { cls: 'rc-entree', orange: '_', rouge: 'E. Page', titre: 'Retour chariot' });
     entree.style.marginLeft = 'calc(var(--u) * .9)';
+    // Le symbole gravé au-dessus de la touche : un trait qui remonte vers la gauche en flèche
+    entree.querySelector('.rc-o').innerHTML = '<svg viewBox="0 0 20 8" style="display:block;width:calc(var(--u) * .5);height:calc(var(--u) * .2)" aria-hidden="true">' +
+      '<path d="M19 6.5 L5.5 6.5 L2.8 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M0.97 0.62 L4.07 2.02 L1.53 3.98 Z" fill="currentColor"/></svg>';
+    entree.querySelector('.rc-o').style.left = 'calc(var(--u) * -.3)';
     parCode[0x0D] = entree;
     r.appendChild(entree);
 
