@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.19a';  // Celle de rebootMinitel
+  const VERSION = '2026.11.19c';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -415,7 +415,7 @@
   const E_SYNTAXE = 1, E_DIVZERO = 2, E_LIGNE = 3, E_RETURN = 4, E_NEXT = 5, E_MEMOIRE = 6,
     E_TYPE = 7, E_INDICE = 8, E_FICHIER = 9, E_IMBRIC = 10, E_VALEUR = 11, E_BREAK = 12,
     E_DATA = 13, E_WEND = 14, E_WHILE = 15, E_NONOUVERT = 16, E_FINFICH = 17, E_INTROUV = 18,
-    E_DEJA = 19, E_BROCHE = 20, E_HORLOGE = 21, E_LONGUE = 22;
+    E_DEJA = 19, E_BROCHE = 20, E_HORLOGE = 21, E_LONGUE = 22, E_PC = 23;
   const MESSAGES = {
     [E_SYNTAXE]: 'Erreur de syntaxe', [E_DIVZERO]: 'Division par z\u00e9ro', [E_RETURN]: 'RETURN sans GOSUB',
     [E_NEXT]: 'NEXT sans FOR', [E_MEMOIRE]: 'M\u00e9moire pleine', [E_TYPE]: 'Type incompatible',
@@ -423,7 +423,8 @@
     [E_VALEUR]: 'Valeur incorrecte', [E_BREAK]: 'Interruption', [E_DATA]: 'Plus de DATA',
     [E_WEND]: 'WEND sans WHILE', [E_WHILE]: 'WHILE sans WEND', [E_NONOUVERT]: 'Fichier non ouvert',
     [E_FINFICH]: 'Fin de fichier', [E_INTROUV]: 'Fichier introuvable', [E_DEJA]: 'Fichier d\u00e9j\u00e0 ouvert',
-    [E_BROCHE]: 'Broche interdite', [E_HORLOGE]: 'Horloge absente', [E_LONGUE]: 'Ligne trop longue'
+    [E_BROCHE]: 'Broche interdite', [E_HORLOGE]: 'Horloge absente', [E_LONGUE]: 'Ligne trop longue',
+    [E_PC]: 'PC absent'
   };
 
   // Résultats de la saisie d'une ligne
@@ -626,7 +627,7 @@
     const HELP_PAGES = 4;
     const AIDE = [
       ['Commandes :', ' RUN LIST [n][-m] [/P] NEW MEM AIDE', ' EDIT n  RENUM [d\u00e9but][,pas]',
-        ' SAVE "NOM" LOAD "NOM" MERGE "NOM"', ' FILES KILL "NOM"', '',
+        ' SAVE "NOM" LOAD "NOM" MERGE "NOM"', ' FILES KILL "NOM"', ' "PC:NOM" FILES "PC:" : sur le PC', '',
         'Instructions :', ' PRINT (ou ?) avec ; , TAB(n)', ' INPUT ["texte";] v[,v...]',
         ' [LET] v = expression', ' IF cond THEN ... [ELSE ...]', ' GOTO n  GOSUB n  RETURN',
         ' ON x GOTO n1,n2...  ON x GOSUB ...', ' FOR v=a TO b [STEP c] ... NEXT [v]',
@@ -1589,9 +1590,14 @@
     //////////////////////////////////////////////////////////////////////////////
     // Fichiers sur la carte SD
 
-    function fileName(extension) {
-      const s = strExpr();
+    function fileName(extension, pcPermis) {
+      // pcPermis : le préfixe "PC:" est accepté (SAVE, LOAD, MERGE). Sur la carte, le
+      // fichier est alors sur l'ordinateur relié par le câble USB ; le Minitel virtuel n'a
+      // pas de câble : « PC absent », comme une carte sans passerelle.
+      let s = strExpr();
       if (err) return null;
+      const pc = pcPermis && /^pc:/i.test(s);
+      if (pc) s = s.slice(3);
       const n = s.length;
       let point = -1;
       for (let i = 0; i < n; i++) {
@@ -1612,6 +1618,7 @@
         nom += c;
       }
       if (point < 0) nom += extension;
+      if (pc) { err = E_PC; return null; }
       return nom;
     }
 
@@ -1622,7 +1629,7 @@
     }
 
     function save() {
-      const nom = fileName('.BAS');
+      const nom = fileName('.BAS', true);
       if (!nom) return;
       if (!env.sd.ecrire(nom, versOctets(programmeTexte()))) err = E_FICHIER;
     }
@@ -1646,13 +1653,19 @@
     }
 
     function load(fusion) {
-      const nom = fileName('.BAS');
+      const nom = fileName('.BAS', true);
       if (!nom) return;
       if (!env.sd.existe(nom)) { err = E_INTROUV; return; }
       chargerTexte(depuisOctets(env.sd.lire(nom)), fusion);
     }
 
     function files() {
+      if (isStrStart()) {  // FILES "PC:" : pas de PC relié au Minitel virtuel
+        const s = strExpr();
+        if (err) return;
+        err = /^pc:?$/i.test(s) ? E_PC : E_VALEUR;
+        return;
+      }
       for (const f of env.sd.liste()) {
         if (err) break;
         let nom = f.nom.slice(0, 13);
