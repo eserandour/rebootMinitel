@@ -20,6 +20,8 @@ bool g_interactif = false;
 long g_limite = 400000;  // Lectures du clavier sans touche avant d'interrompre le programme
 
 SDClass SD;
+int g_fdPC = getenv("REBASIC_PC") ? atoi(getenv("REBASIC_PC")) : -1;
+SerialPC Serial;
 Minitel minitel;
 RTC_DS3231 rtc;
 boolean horlogeOK = true;

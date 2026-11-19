@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <strings.h>
+#include <poll.h>
 
 typedef unsigned char byte;
 typedef bool boolean;
@@ -24,6 +25,7 @@ typedef bool boolean;
 #define strlen_P strlen
 #define strncmp_P strncmp
 #define strcasecmp_P strcasecmp
+#define strcmp_P strcmp
 #define snprintf_P snprintf
 #define pgm_read_byte(p) (*(const unsigned char*)(p))
 
@@ -270,8 +272,35 @@ struct SDClass {
   }
 };
 
+// La liaison avec le PC (Serial, le câble USB) : une prise reliée à la passerelle
+// (descripteur donné par la variable d'environnement REBASIC_PC), sinon rien n'est branché.
+// Chaque attente d'un octet compte pour une milliseconde de temps simulé.
+extern int g_fdPC;
+struct SerialPC {
+  int lu = -1;  // Octet lu d'avance par available()
+  void begin(long) { }
+  int available() {
+    if (lu >= 0) return 1;
+    if (g_fdPC >= 0) {
+      pollfd p{g_fdPC, POLLIN, 0};
+      unsigned char c;
+      if (poll(&p, 1, 1) > 0 && ::read(g_fdPC, &c, 1) == 1) { lu = c; return 1; }
+    }
+    g_ms++;
+    return 0;
+  }
+  int read() { if (!available()) return -1; int c = lu; lu = -1; return c; }
+  size_t write(char c) { if (g_fdPC >= 0 && ::write(g_fdPC, &c, 1) != 1) return 0; return 1; }
+};
+
+extern SerialPC Serial;
 extern SDClass SD;
 extern Minitel minitel;
 extern RTC_DS3231 rtc;
+// L'horloge vue par reBASIC (Horloge.ino n'est pas compilé dans le simulateur)
+extern boolean horlogeOK;
+inline DateTime horlogeMaintenant() { return rtc.now(); }
+inline boolean horlogeAttendrePC(unsigned long) { return horlogeOK; }
+inline boolean horlogeDecoderPC(const char*) { return false; }
 const byte BUZZER = 2;
 const byte CHIP_SELECT = 53;

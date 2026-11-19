@@ -11,6 +11,7 @@ Le simulateur compile le **vrai `Basic.ino`** du croquis avec un compilateur C++
 | Horloge DS3231 | le 14/11/2026 à 10:30:00 au lancement, puis le temps simulé |
 | Temps (`millis`) | avance d'une milliseconde à chaque instruction : `PAUSE`, `TIMER`, `TIME$` restent cohérents |
 | Carte SD | un dossier de l'ordinateur (`carte_sd/` par défaut) |
+| Liaison avec le PC (`Serial`) | une prise reliée à la passerelle, pour `tester.py` de [`passerelle/`](../passerelle/) ; sinon rien n'est branché (`SAVE "PC:…"` répond `PC absent`) |
 | Buzzer, broches | les appels sont notés dans un journal ; `DREAD` et `AREAD` renvoient des valeurs qui varient avec le temps |
 
 Les tailles sont celles de l'**Arduino Mega** (programme de 2048 octets, chaînes de 32 caractères…).
