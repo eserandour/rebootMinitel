@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.19d';  // Celle de rebootMinitel
+  const VERSION = '2026.11.19e';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -2721,7 +2721,7 @@
       moveXY(20, 16); println('0 - R\u00e9glage Horloge');
       moveXY(20, 17); println('1 - reBASIC');
       moveXY(20, 18); println('2 - Pages Vid\u00e9otex');
-      moveXY(20, 19); println('3 - Carte SD');
+      moveXY(20, 19); println('3 - Fichiers');
       moveXY(20, 20); println('4 - Pong');
       moveXY(20, 21);
       println('5 - \u00c0 propos');  // Le Minitel affiche « A propos » : pas de majuscule accentuée
@@ -3014,7 +3014,7 @@
     }
 
     function* carteSD() {
-      // Menu 3 : le gestionnaire de la carte SD (comme Fichiers.ino)
+      // Menu 3 (« Fichiers ») : le gestionnaire de la carte SD (comme Fichiers.ino)
       let page = 0;
       while (true) {
         const fichiers = env.sd.liste();
