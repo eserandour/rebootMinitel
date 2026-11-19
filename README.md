@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.19c)
+# rebootMinitel (version 2026.11.19d)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
@@ -113,7 +113,10 @@ Le menu 3 est un **gestionnaire de la carte SD** : il liste les fichiers de la r
 | `1` | **Afficher** : une page Vidéotex (`.VDT`) est dessinée ; un autre fichier (`.BAS`, `.TXT`…) est affiché comme du texte, écran par écran (`SUITE` pour la suite) |
 | `2` | **Lancer** (programmes `.BAS`) : le programme est chargé dans reBASIC (`LOAD`), puis lancé (`RUN`). `SOMMAIRE` quitte ensuite reBASIC et revient au menu |
 | `3` | **Supprimer**, après confirmation par `ENVOI` |
+| `4` | **Copier sur le PC**, dans le dossier de la [passerelle](outils/passerelle/README.md#copier-des-fichiers-menu-3) (nom au format 8.3) |
 | `SOMMAIRE` | Retour à la liste, puis au menu |
+
+Depuis la liste, **`ENVOI` affiche les fichiers du PC** (le dossier de la passerelle), présentés de la même façon : on tape la lettre d'un fichier, puis `ENVOI` pour le **copier sur la carte SD** (un fichier de même nom sur la carte est remplacé, après un avertissement). Toutes sortes de fichiers passent, pages Vidéotex comprises. La copie se fait à la vitesse de la liaison USB (9600 bauds) : environ 2 secondes par kilo-octet.
 
 ### Pong (menu 4)
 
