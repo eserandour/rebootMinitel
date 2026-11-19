@@ -1,8 +1,10 @@
-# rebootMinitel (version 2026.11.19a)
+# rebootMinitel (version 2026.11.19c)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
 Grâce à la **carte SD** du shield, reBASIC enregistre et recharge les programmes (`SAVE`, `LOAD`, `MERGE`), et chaque programme peut écrire et relire ses propres fichiers de données : scores, carnet d'adresses, journal de mesures… Ce sont de simples fichiers texte, que l'on peut aussi ouvrir sur un ordinateur, par exemple dans un tableur.
+
+La carte peut aussi rester reliée à l'**ordinateur** par son câble USB : depuis le Minitel, `SAVE "PC:NOM"` enregistre alors le programme dans un dossier de l'ordinateur, et `LOAD "PC:NOM"` l'y reprend (voir [Programmes sur le PC](#programmes-sur-le-pc)). Une carte sans horloge (shield sans DS3231, ESP32 seul) y prend aussi l'heure.
 
 reBASIC peut aussi piloter les **broches libres de l'Arduino** : allumer une LED ou un relais, faire varier une luminosité (MLI), lire un bouton ou un interrupteur, mesurer une tension sur une entrée analogique (potentiomètre, capteur de lumière ou de température…). Le Minitel devient ainsi l'écran et le clavier de petites expériences d'électronique (ou littéraires), programmées en BASIC.
 
@@ -28,6 +30,7 @@ Site : <https://entropie.org/3615>
 - [reBASIC](#rebasic)
   - [Saisie et touches](#saisie-et-touches)
   - [Commandes](#commandes)
+  - [Programmes sur le PC](#programmes-sur-le-pc)
   - [Instructions](#instructions)
   - [Attributs d'affichage](#attributs-daffichage)
   - [Fonctions](#fonctions)
@@ -53,7 +56,7 @@ Site : <https://entropie.org/3615>
 | Fonction | Broches (Arduino Mega) |
 |---|---|
 | Minitel | Serial1 : TX1 / RX1 (D18 / D19) |
-| Liaison avec le PC | Serial : D0 / D1 |
+| Liaison avec le PC (câble USB, passerelle) | Serial : D0 / D1 |
 | Slot USB-A du shield | Serial2 : D16 / D17 |
 | Buzzer | D2 |
 | Horloge DS3231 | SDA / SCL (D20 / D21), SQW (D34), 32K (D36) |
@@ -76,11 +79,13 @@ Le dossier du croquis doit porter le même nom que le fichier `.ino` principal.
 
 Au démarrage, le croquis cherche la vitesse du Minitel puis la règle à 4800 bauds. Il vérifie ensuite l'horloge et la carte SD. Un message s'affiche si l'une d'elles est absente, mais le croquis continue sans elle.
 
+Sans horloge DS3231, rebootMinitel garde l'heure avec une horloge logicielle : il prend l'**heure de l'ordinateur** si la [passerelle](outils/passerelle/README.md#lheure-du-pc) tourne (au démarrage, ou dès qu'elle est lancée, depuis l'écran d'accueil), et on peut aussi la régler à la main (menu 0). Elle perd l'heure quand la carte s'éteint.
+
 Le menu d'accueil, qui affiche la date et l'heure, propose :
 
 | Touche | Menu |
 |---|---|
-| `0` | Réglage de l'horloge (saisie JJ/MM/AAAA hh:mm, `CORRECTION` pour effacer, `SOMMAIRE` pour revenir sans modifier) |
+| `0` | Réglage de l'horloge (saisie JJ/MM/AAAA hh:mm, `CORRECTION` pour effacer, `SOMMAIRE` pour revenir sans modifier) ; sans horloge DS3231, règle l'horloge logicielle |
 | `1` | reBASIC |
 | `2` | Pages Vidéotex (voir ci-dessous) |
 | `3` | Carte SD (voir ci-dessous) |
@@ -181,8 +186,28 @@ RUN
 | `MERGE "NOM"` | Ajoute les lignes de `NOM.BAS` au programme en cours (une ligne de même numéro est remplacée) |
 | `FILES` | Liste les fichiers de la carte SD par ordre alphabétique, avec leur taille (les programmes sans leur extension `.BAS`) |
 | `KILL "NOM"` | Supprime `NOM.BAS` (ou le fichier nommé, s'il a une extension : `KILL "DONNEES.TXT"`) |
+| `SAVE "PC:NOM"`, `LOAD "PC:NOM"`, `MERGE "PC:NOM"`, `FILES "PC:"` | Les mêmes, avec un dossier de l'ordinateur à la place de la carte SD (voir [Programmes sur le PC](#programmes-sur-le-pc)) |
 
 Les noms de fichiers suivent le format 8.3 : 1 à 8 lettres, chiffres, `_` ou `-`, et une extension facultative de 1 à 3 caractères.
+
+### Programmes sur le PC
+
+Avec le préfixe `PC:`, les programmes sont enregistrés et chargés **dans un dossier de l'ordinateur**, relié à la carte par son câble USB, sans passer par la carte SD :
+
+```
+SAVE "PC:JEU"      enregistre le programme dans JEU.BAS, sur l'ordinateur
+LOAD "PC:JEU"      charge JEU.BAS depuis l'ordinateur
+MERGE "PC:JEU"     ajoute les lignes de JEU.BAS au programme en cours
+FILES "PC:"        liste les fichiers du dossier de l'ordinateur
+```
+
+Sur l'ordinateur, il faut lancer la passerelle [`outils/passerelle/passerelle.py`](outils/passerelle/) (Python 3 et pyserial), en lui donnant le dossier des programmes :
+
+```
+python3 outils/passerelle/passerelle.py --dossier ~/Documents/reBASIC
+```
+
+Les fichiers ont le même format que sur la carte SD : on peut les écrire dans un éditeur de texte, ou les ouvrir dans le Minitel virtuel. La passerelle donne aussi l'heure à une carte sans horloge DS3231. Sans réponse de la passerelle, reBASIC affiche `PC absent`. L'Arduino Mega redémarre quand la passerelle ouvre le port : lancez-la avant de taper un programme. Voir le [README de la passerelle](outils/passerelle/README.md).
 
 `RENUM` met aussi à jour les numéros de ligne écrits après `GOTO`, `GOSUB`, `THEN`, `ELSE`, `RESTORE` et dans les listes de `ON … GOTO/GOSUB`. Les chaînes et les commentaires ne sont pas modifiés. Un numéro calculé (`GOTO 100+X`) ne peut pas être mis à jour. Si la place manque, rien n'est changé.
 
@@ -287,8 +312,8 @@ La une de **Minitel Matin** (`exemples/MATIN.BAS`) les utilise tous : un bandeau
 | `INSTR([début,]a$,b$)` | Position de b$ dans a$ (0 si absente) |
 | `POINT(x,y)` | -1 si le point est allumé, 0 sinon |
 | `TIMER` | Millisecondes écoulées depuis le `RUN` |
-| `HOUR` `MINUTE` `SECOND` | Heure, minutes, secondes (horloge RTC) |
-| `DAY` `MONTH` `YEAR` | Jour, mois, année (horloge RTC) |
+| `HOUR` `MINUTE` `SECOND` | Heure, minutes, secondes (horloge RTC, ou heure du PC) |
+| `DAY` `MONTH` `YEAR` | Jour, mois, année (horloge RTC, ou heure du PC) |
 | `EOF(n)` | -1 à la fin du fichier n, 0 sinon |
 | `DREAD(broche)` | État d'une broche numérique : 0 ou 1 |
 | `AREAD(entrée)` | Entrée analogique : 0 à 1023 |
@@ -420,9 +445,10 @@ Erreur de syntaxe en ligne 10
 | Trop d'imbrications | Trop de parenthèses, `GOSUB`, `FOR` ou `WHILE` imbriqués |
 | Valeur incorrecte | Paramètre hors des limites permises |
 | Plus de DATA | `READ` après la dernière donnée |
-| Fichier introuvable / Fichier déjà ouvert / Fichier non ouvert / Fin de fichier / Erreur de fichier | Fichiers sur la carte SD |
+| Fichier introuvable / Fichier déjà ouvert / Fichier non ouvert / Fin de fichier / Erreur de fichier | Fichiers sur la carte SD (ou sur le PC) |
+| PC absent | `SAVE "PC:…"`, `LOAD "PC:…"`… sans réponse de la passerelle sur l'ordinateur |
 | Broche interdite | Broche réservée au matériel |
-| Horloge absente | Fonction d'heure ou de date sans horloge RTC |
+| Horloge absente | Fonction d'heure ou de date sans horloge RTC, sans heure réglée à la main et sans réponse de la passerelle |
 | Interruption | `ANNULATION` ou `SOMMAIRE` pendant l'exécution |
 
 ### Limites
@@ -598,5 +624,6 @@ Le dossier [`exemples/`](exemples/) contient dix programmes et deux pages Vidéo
 Le dossier [`outils/`](outils/) contient, pour l'ordinateur :
 
 - le **Minitel virtuel** : rebootMinitel et reBASIC dans un navigateur, et la bibliothèque JavaScript `rebasic.js` (voir [Minitel virtuel](#minitel-virtuel)) ;
+- la **passerelle** avec le PC : enregistrer et ouvrir des programmes sur l'ordinateur depuis le Minitel (voir [Programmes sur le PC](#programmes-sur-le-pc)) ;
 - un **simulateur** de reBASIC, qui compile le vrai `Basic.ino` sur PC : exécuter un programme, utiliser reBASIC dans un terminal, produire des images d'écran ;
 - la **fabrication du tutoriel** « Programmer en reBASIC » (ODT et PDF), dont tous les exemples sont exécutés dans le simulateur.

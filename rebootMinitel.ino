@@ -3,7 +3,7 @@
    rebootMinitel
    Copyright 2023-2026 - Eric Sérandour
 */
-   const String VERSION = "2026.11.19a";  // 00h09
+   const String VERSION = "2026.11.19c";
 /*
    
    This program is free software: you can redistribute it and/or modify
@@ -57,7 +57,7 @@
   ** 32K - D36
 
   * Les ports série UART :
-  ** RX0 / TX0   - D0 / D1   : communication avec le PC (USB)
+  ** RX0 / TX0   - D0 / D1   : communication avec le PC (USB) : SAVE "PC:NOM"... de reBASIC
   ** RX0' / TX0'             : communication avec une carte en 3,3 V
   ** TX2 / RX2   - D16 / D17 : communication avec l'embase USB-A
   ** TX1 / RX1   - D18 / D19 : communication avec le Minitel
@@ -76,7 +76,8 @@
   * Carte SD : SPI (VSPI), CS = GPIO5, SCK = GPIO18, MISO = GPIO19, MOSI = GPIO23
   * Buzzer : GPIO2
   L'horloge et la carte SD sont facultatives : sans elles, rebootMinitel le signale
-  au démarrage et continue.
+  au démarrage et continue. Sans horloge, il prend l'heure du PC (passerelle, voir
+  Horloge.ino) ou on la règle à la main (menu 0).
 */
 
 // #include <SPI.h> // Nécessaire avec Arduino 1.6.12, inutile avec Arduino 1.8.19
@@ -137,7 +138,8 @@ byte ecran = TAG_ECRAN_ACCUEIL;
 
 void setup()
 {
-  // Liaison avec l'ordinateur, à 9600 bauds
+  // Liaison avec l'ordinateur, à 9600 bauds (câble USB) : SAVE "PC:NOM", LOAD "PC:NOM"...
+  // de reBASIC, avec outils/passerelle/passerelle.py sur l'ordinateur
   Serial.begin(9600);
 
   // Minitel : on cherche sa vitesse, puis on passe à 4800 bauds

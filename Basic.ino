@@ -26,6 +26,8 @@
                            les numéros après GOTO, GOSUB, THEN, ELSE, RESTORE et ON...
     SAVE "NOM"   LOAD "NOM"   MERGE "NOM"   FILES   KILL "NOM"
     (programmes NOM.BAS sur la carte SD ; MERGE ajoute les lignes au programme en cours)
+    SAVE "PC:NOM"   LOAD "PC:NOM"   MERGE "PC:NOM"   FILES "PC:"
+    (programmes rangés sur l'ordinateur, relié par le câble USB : voir basPcSave)
 
   Instructions :
     PRINT (ou ?) avec ; et , et TAB(n)     INPUT ["texte";] variable[,variable...]
@@ -165,6 +167,7 @@
 #define BAS_E_BROCHE    20
 #define BAS_E_HORLOGE   21
 #define BAS_E_LONGUE    22
+#define BAS_E_PC        23
 
 // Résultats de la saisie d'une ligne
 #define BAS_K_OK      0
@@ -490,6 +493,7 @@ void basPrintError()
     case BAS_E_BROCHE  : basPutsP(PSTR("Broche interdite")); break;
     case BAS_E_HORLOGE : basPutsP(PSTR("Horloge absente")); break;
     case BAS_E_LONGUE  : basPutsP(PSTR("Ligne trop longue")); break;
+    case BAS_E_PC      : basPutsP(PSTR("PC absent")); break;
   }
   if (basCur != NULL) {
     basPutsP(PSTR(" en ligne "));
@@ -541,6 +545,7 @@ void basHelpPage(byte page)
     basPutsP(PSTR(" EDIT n  RENUM [début][,pas]\n"));
     basPutsP(PSTR(" SAVE \"NOM\" LOAD \"NOM\" MERGE \"NOM\"\n"));
     basPutsP(PSTR(" FILES KILL \"NOM\"\n"));
+    basPutsP(PSTR(" \"PC:NOM\" FILES \"PC:\" : sur le PC\n"));
     basNewLine();
     basPutsP(PSTR("Instructions :\n"));
     basPutsP(PSTR(" PRINT (ou ?) avec ; , TAB(n)\n"));
@@ -1408,8 +1413,8 @@ void bas2Digits(char* s, int n)
 void basClockStr(char* dst, boolean date)
 {
   // DATE$ ("JJ/MM/AAAA") ou TIME$ ("hh:mm:ss")
-  if (!horlogeOK) { basErr = BAS_E_HORLOGE; return; }
-  DateTime t = rtc.now();
+  if (!horlogeOK && !horlogeAttendrePC(500)) { basErr = BAS_E_HORLOGE; return; }
+  DateTime t = horlogeMaintenant();
   if (date) {
     bas2Digits(dst, t.day());
     dst[2] = '/';
@@ -1606,8 +1611,9 @@ BAS_NOINLINE float basInstr()
 float basClockNum(byte quoi)
 {
   // HOUR (quoi 'H'), MINUTE ('N'), SECOND ('S'), DAY ('D'), MONTH ('M') ou YEAR ('Y')
-  if (!horlogeOK) { basErr = BAS_E_HORLOGE; return 0; }
-  DateTime t = rtc.now();
+  // Sans horloge RTC ni heure connue, on la demande au PC (passerelle)
+  if (!horlogeOK && !horlogeAttendrePC(500)) { basErr = BAS_E_HORLOGE; return 0; }
+  DateTime t = horlogeMaintenant();
   switch (quoi) {
     case 'H' : return t.hour();
     case 'N' : return t.minute();
@@ -1976,17 +1982,24 @@ unsigned int basLineArg()
 // Fichiers sur la carte SD
 //////////////////////////////////////////////////////////////////////////////////////
 
-boolean basFileName(char* nom, const char* extension)
+boolean basFileName(char* nom, const char* extension, boolean* pc)
 {
   // Lit un nom de fichier ("JEU" ou "JEU.TXT") et construit le nom complet ("/JEU.BAS")
   // dans nom (14 octets). Sans extension, on ajoute celle qui est donnée (".BAS", ".TXT").
+  // Si pc n'est pas NULL, le préfixe "PC:" ("PC:JEU") est accepté : *pc dit s'il y était
+  // (le fichier est alors sur l'ordinateur, voir basPcSave). Sinon, "PC:" est refusé.
   char s[BAS_STR_MAX + 1];
   basStrExpr(s);
   if (basErr) return false;
-  int n = strlen(s);
+  char* t = s;
+  if (pc != NULL) {
+    *pc = ((s[0] == 'P' || s[0] == 'p') && (s[1] == 'C' || s[1] == 'c') && s[2] == ':');
+    if (*pc) t += 3;
+  }
+  int n = strlen(t);
   int point = -1;  // Position du point (-1 : pas de point)
   for (int i = 0; i < n; i++) {
-    if (s[i] == '.') {
+    if (t[i] == '.') {
       if (point >= 0) { basErr = BAS_E_VALEUR; return false; }  // Deux points
       point = i;
     }
@@ -1999,7 +2012,7 @@ boolean basFileName(char* nom, const char* extension)
   }
   nom[0] = '/';
   for (int i = 0; i < n; i++) {
-    char c = s[i];
+    char c = t[i];
     if (c >= 'a' && c <= 'z') c -= 32;
     if (!basIsLetter(c) && !basIsDigit(c) && c != '_' && c != '-' && i != point) {
       basErr = BAS_E_VALEUR;
@@ -2017,7 +2030,9 @@ boolean basFileName(char* nom, const char* extension)
 void basSave()
 {
   char nom[14];
-  if (!basFileName(nom, PSTR(".BAS"))) return;
+  boolean pc;
+  if (!basFileName(nom, PSTR(".BAS"), &pc)) return;
+  if (pc) { basPcSave(nom); return; }
   if (SD.exists(nom)) SD.remove(nom);
   File fichier = SD.open(nom, FILE_WRITE);
   if (!fichier) { basErr = BAS_E_FICHIER; return; }
@@ -2031,15 +2046,9 @@ void basSave()
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-void basLoad(boolean fusion)
+void basLoadStart(boolean fusion)
 {
-  // LOAD (fusion faux) remplace le programme ; MERGE (fusion vrai) ajoute les lignes
-  // du fichier au programme en cours (une ligne de même numéro est remplacée).
-  char nom[14];
-  if (!basFileName(nom, PSTR(".BAS"))) return;
-  if (!SD.exists(nom)) { basErr = BAS_E_INTROUV; return; }
-  File fichier = SD.open(nom);
-  if (!fichier) { basErr = BAS_E_FICHIER; return; }
+  // Avant de lire les lignes d'un LOAD (fusion faux) ou d'un MERGE (fusion vrai)
   basStop = true;  // Le programme change : on arrête l'exécution en cours
   if (!fusion) {
     basCloseAll();
@@ -2049,6 +2058,33 @@ void basLoad(boolean fusion)
   else {
     basResetStacks();
   }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basLoadLine(char* ligne)
+{
+  // Range une ligne lue dans un fichier (les lignes sans numéro sont ignorées)
+  basUpper(ligne);
+  char* p = ligne;
+  while (*p == ' ') p++;
+  if (basIsDigit(*p)) basEnterLine(p);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basLoad(boolean fusion)
+{
+  // LOAD (fusion faux) remplace le programme ; MERGE (fusion vrai) ajoute les lignes
+  // du fichier au programme en cours (une ligne de même numéro est remplacée).
+  char nom[14];
+  boolean pc;
+  if (!basFileName(nom, PSTR(".BAS"), &pc)) return;
+  if (pc) { basPcLoad(nom, fusion); return; }
+  if (!SD.exists(nom)) { basErr = BAS_E_INTROUV; return; }
+  File fichier = SD.open(nom);
+  if (!fichier) { basErr = BAS_E_FICHIER; return; }
+  basLoadStart(fusion);
   byte n = 0;
   boolean fin = false;
   while (!fin && basErr == 0) {
@@ -2058,16 +2094,166 @@ void basLoad(boolean fusion)
     if (c == '\n' || c < 0) {  // Fin de ligne ou fin de fichier
       basInBuf[n] = 0;
       n = 0;
-      basUpper(basInBuf);
-      char* p = basInBuf;
-      while (*p == ' ') p++;
-      if (basIsDigit(*p)) basEnterLine(p);  // Les lignes sans numéro sont ignorées
+      basLoadLine(basInBuf);
     }
     else if (n < BAS_LINE_MAX) {
       basInBuf[n++] = (char) c;
     }
   }
   fichier.close();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+// Fichiers sur le PC : SAVE "PC:NOM", LOAD "PC:NOM", MERGE "PC:NOM", FILES "PC:"
+//////////////////////////////////////////////////////////////////////////////////////
+/*
+  Les programmes sont rangés dans un dossier de l'ordinateur, relié à la carte par son
+  câble USB (Serial, la liaison avec le PC). Sur l'ordinateur, le programme
+  outils/passerelle/passerelle.py répond aux demandes de reBASIC.
+
+  Chaque message est une ligne de texte terminée par un saut de ligne. Les lignes du
+  dialogue commencent par @ (les lignes de programme commencent par leur numéro).
+  L'heure (@HEURE, voir Horloge.ino) passe par le même câble :
+
+    SAVE  : -> @SAVE NOM.BAS     <- @OK
+            -> les lignes du programme, puis @FIN     <- @OK
+    LOAD  : -> @LOAD NOM.BAS     <- @OK (ou @ERR INTROUVABLE)
+            puis, pour chaque ligne : -> @SUITE   <- la ligne, ou @FIN à la fin
+    FILES : -> @FILES            <- @OK
+            puis, pour chaque fichier : -> @SUITE   <- "NOM.EXT taille", ou @FIN
+
+  reBASIC demande les lignes une par une (@SUITE) : la mémoire de réception de
+  l'Arduino Mega (64 octets) ne peut pas déborder. Les lignes qui ne commencent pas par @
+  en réponse à une demande sont ignorées (messages de démarrage, par exemple).
+  Sans réponse au bout de BAS_PC_DELAI millisecondes : erreur « PC absent ».
+*/
+
+#define BAS_PC_DELAI 3000
+
+void basPcSendP(const char* p)
+{
+  // Envoie au PC un texte rangé en mémoire programme
+  char c;
+  while ((c = pgm_read_byte(p++)) != 0) Serial.write(c);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basPcSend(const char* s)
+{
+  // Envoie au PC un texte rangé en mémoire vive
+  while (*s) Serial.write(*s++);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basPcRead(char* buf, byte max)
+{
+  // Lit une ligne envoyée par le PC, sans sa fin de ligne. Les caractères au-delà de max
+  // sont ignorés. Faux, avec l'erreur « PC absent », si la ligne n'arrive pas à temps.
+  byte n = 0;
+  unsigned long debut = millis();
+  while (millis() - debut < BAS_PC_DELAI) {
+    if (!Serial.available()) continue;
+    int c = Serial.read();
+    if (c < 0 || c == '\r') continue;
+    if (c == '\n') {
+      buf[n] = 0;
+      return true;
+    }
+    if (n < max) buf[n++] = (char) c;
+  }
+  basErr = BAS_E_PC;
+  return false;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basPcAnswer()
+{
+  // Attend la réponse du PC à une demande : @OK (vrai), ou @ERR... (faux, avec une erreur)
+  while (basPcRead(basInBuf, BAS_LINE_MAX)) {
+    if (basInBuf[0] != '@') continue;  // Pas une réponse : on l'ignore
+    if (horlogeDecoderPC(basInBuf)) continue;  // L'heure, demandée par l'écran d'accueil
+    if (strcmp_P(basInBuf, PSTR("@OK")) == 0) return true;
+    if (strcmp_P(basInBuf, PSTR("@ERR INTROUVABLE")) == 0) basErr = BAS_E_INTROUV;
+    else basErr = BAS_E_FICHIER;
+    return false;
+  }
+  return false;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basPcBegin(const char* demande, const char* nom)
+{
+  // Envoie une demande (@SAVE, @LOAD, @FILES), suivie du nom du fichier s'il y en a un
+  // (sans la barre oblique du début), et attend que le PC l'accepte.
+  while (Serial.available()) Serial.read();  // On oublie ce qui a pu arriver avant
+  basPcSendP(demande);
+  if (nom != NULL) {
+    Serial.write(' ');
+    basPcSend(nom + 1);
+  }
+  Serial.write('\n');
+  return basPcAnswer();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basPcNext()
+{
+  // Demande la ligne suivante au PC (dans basInBuf). Faux à la fin (@FIN) ou en cas d'erreur.
+  basPcSendP(PSTR("@SUITE\n"));
+  if (!basPcRead(basInBuf, BAS_LINE_MAX)) return false;
+  return strcmp_P(basInBuf, PSTR("@FIN")) != 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basPcSave(const char* nom)
+{
+  if (!basPcBegin(PSTR("@SAVE"), nom)) return;
+  char num[6];
+  for (byte* p = basProg; p < basProgEnd(); p += 3 + p[2]) {
+    basUtoa(basLineNum(p), num);
+    basPcSend(num);
+    Serial.write(' ');
+    basPcSend((char*) (p + 3));
+    Serial.write('\n');
+  }
+  basPcSendP(PSTR("@FIN\n"));
+  basPcAnswer();  // Le PC répond quand le fichier est écrit
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basPcLoad(const char* nom, boolean fusion)
+{
+  if (!basPcBegin(PSTR("@LOAD"), nom)) return;
+  basLoadStart(fusion);
+  while (basErr == 0 && basPcNext()) basLoadLine(basInBuf);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basPcFiles()
+{
+  // Liste les fichiers du dossier du PC (le PC les envoie par ordre alphabétique)
+  if (!basPcBegin(PSTR("@FILES"), NULL)) return;
+  while (basErr == 0 && basPcNext()) {
+    char* taille = strchr(basInBuf, ' ');  // "NOM.EXT taille"
+    if (taille != NULL) *taille++ = 0;
+    byte n = strlen(basInBuf);
+    if (n > 4 && strcasecmp_P(basInBuf + n - 4, PSTR(".BAS")) == 0) basInBuf[n - 4] = 0;
+    basPuts(basInBuf);
+    if (taille != NULL) {
+      while (basCol < 13) { minitel.writeByte(' '); basAvance(); }
+      basPuts(taille);
+    }
+    basNewLine();
+    basCheckBreak();
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2082,6 +2268,14 @@ void basFiles()
 #else
   const byte MAX = 13;  // Noms 8.3 sur l'ATmega (12 caractères) : peu de pile utilisée
 #endif
+  if (basIsStrStart()) {  // FILES "PC:" : les fichiers du PC
+    char s[BAS_STR_MAX + 1];
+    basStrExpr(s);
+    if (basErr) return;
+    if (strcasecmp_P(s, PSTR("PC:")) != 0 && strcasecmp_P(s, PSTR("PC")) != 0) { basErr = BAS_E_VALEUR; return; }
+    basPcFiles();
+    return;
+  }
   char dernier[MAX], suivant[MAX], courant[MAX];
   dernier[0] = 0;
   bool premier = true;
@@ -2156,7 +2350,7 @@ void basOpen()
 {
   // OPEN "NOM" FOR INPUT|OUTPUT|APPEND AS #n
   char nom[14];
-  if (!basFileName(nom, PSTR(".TXT"))) return;
+  if (!basFileName(nom, PSTR(".TXT"), NULL)) return;
   if (!BAS_KW("FOR")) { basErr = BAS_E_SYNTAXE; return; }
   char mode;
   if (BAS_KW("INPUT")) mode = 'I';
@@ -3185,7 +3379,7 @@ void basStatement()
   else if (BAS_KW("FILES")) basFiles();
   else if (BAS_KW("KILL")) {
     char nom[14];
-    if (!basFileName(nom, PSTR(".BAS"))) return;
+    if (!basFileName(nom, PSTR(".BAS"), NULL)) return;
     if (!SD.exists(nom)) basErr = BAS_E_INTROUV;
     else if (!SD.remove(nom)) basErr = BAS_E_FICHIER;
   }
