@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.19c';  // Celle de rebootMinitel
+  const VERSION = '2026.11.19d';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -2911,8 +2911,30 @@
         fichTaille(f.taille, 3 + i);
       });
       moveXY(1, 21); puts("Tapez la lettre d'un fichier.");
+      moveXY(1, 22); afficherTouche('ENVOI'); puts(' : fichiers du PC');
       if (pages > 1) { moveXY(1, 23); afficherTouche('RETOUR'); puts(' - '); afficherTouche('SUITE'); puts(' : autres fichiers'); }
       moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour au menu');
+    }
+
+    // Copie avec le PC (comme Fichiers.ino) : sur la carte, elle passe par la passerelle et
+    // le câble USB. Le Minitel virtuel n'est relié à aucune carte : « PC absent », comme une
+    // carte sans passerelle (les boutons « Ouvrir… » et « Enregistrer sous… » font ce travail).
+    const NOM_83 = /^[A-Za-z0-9_-]{1,8}(\.[A-Za-z0-9_-]{1,3})?$/;
+
+    function* fichVersPC(nom) {
+      moveXY(1, 17);
+      if (!NOM_83.test(nom)) { puts('Nom trop long pour le PC (format 8.3)'); yield* bipErreur(); return; }
+      puts('Copie vers le PC...');
+      moveXY(1, 19); puts('PC absent : la passerelle tourne ?'); clearLineFromCursor();
+      yield* bipErreur();
+    }
+
+    function* pcFichiers() {
+      fichTitre(' PC ');
+      moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour \u00e0 la carte SD');
+      moveXY(1, 4); puts('PC absent : la passerelle tourne ?'); clearLineFromCursor();
+      yield* bipErreur();
+      yield* fichCle([SOMMAIRE]);
     }
 
     function* fichCle(acceptees) {
@@ -2958,8 +2980,17 @@
         moveXY(1, 9); puts('1 - Afficher');
         if (programme) { moveXY(1, 11); puts('2 - Lancer'); }
         moveXY(1, 13); puts('3 - Supprimer');
+        moveXY(1, 15); puts('4 - Copier sur le PC');
         moveXY(1, 24); afficherTouche('SOMMAIRE'); puts(' : retour \u00e0 la liste');
-        const k = yield* fichCle(programme ? [0x31, 0x32, 0x33, SOMMAIRE] : [0x31, 0x33, SOMMAIRE]);
+        let k;
+        while (true) {
+          k = yield* fichCle(programme ? [0x31, 0x32, 0x33, 0x34, SOMMAIRE] : [0x31, 0x33, 0x34, SOMMAIRE]);
+          if (k !== 0x34) break;
+          // On reste sur cet écran : le résultat de la copie s'affiche en dessous
+          moveXY(1, 17); clearLineFromCursor();
+          moveXY(1, 19); clearLineFromCursor();
+          yield* fichVersPC(f.nom);
+        }
         if (k === SOMMAIRE) return 0;
         if (k === 0x31) {
           if (page) { yield* vdtAfficher(f.nom); yield* fichCle([SOMMAIRE]); newScreen(); wb(0x0F); }
@@ -2971,8 +3002,8 @@
           return 2;
         }
         else {
-          moveXY(1, 17); puts('Supprimer ce fichier ?');
-          moveXY(1, 19); afficherTouche('ENVOI'); puts(' : oui - '); afficherTouche('SOMMAIRE'); puts(' : non');
+          moveXY(1, 17); puts('Supprimer ce fichier ?'); clearLineFromCursor();
+          moveXY(1, 19); afficherTouche('ENVOI'); puts(' : oui - '); afficherTouche('SOMMAIRE'); puts(' : non'); clearLineFromCursor();
           if ((yield* fichCle([ENVOI, SOMMAIRE])) === ENVOI) {
             env.sd.supprimer(f.nom);
             yield* bipOK();
@@ -2994,6 +3025,7 @@
         while (choix < 0) {
           let k = yield* attendreCle();
           if (k === 0 || k === SOMMAIRE) return;
+          if (k === ENVOI) { yield* pcFichiers(); break; }
           if (k === SUITE || k === RETOUR) {
             const nouvelle = page + (k === SUITE ? 1 : -1);
             if (nouvelle >= 0 && nouvelle < pages) { page = nouvelle; break; }
