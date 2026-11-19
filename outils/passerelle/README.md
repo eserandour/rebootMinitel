@@ -13,7 +13,7 @@ La carte (Arduino Mega ou ESP32) reste reliée à l'ordinateur par son câble US
 
 Les fichiers ont le même format que sur la carte SD : on peut les écrire ou les corriger avec n'importe quel éditeur de texte, ou les ouvrir dans le [Minitel virtuel](../minitel-virtuel/). Les noms suivent le format 8.3 (1 à 8 lettres, chiffres, `_` ou `-`) ; les minuscules sont acceptées sur l'ordinateur (`jeu.bas` se charge avec `LOAD "PC:JEU"`).
 
-Le menu 3 (« Carte SD ») s'en sert aussi pour **copier n'importe quel fichier** (programmes, pages Vidéotex, fichiers de données) entre la carte SD et l'ordinateur (voir [Copier des fichiers](#copier-des-fichiers-menu-3)).
+Le menu 3 (« Fichiers ») s'en sert aussi pour **copier n'importe quel fichier** (programmes, pages Vidéotex, fichiers de données) entre la carte SD et l'ordinateur (voir [Copier des fichiers](#copier-des-fichiers-menu-3)).
 
 La passerelle donne aussi **l'heure de l'ordinateur** à une carte qui n'a pas d'horloge RTC (voir [L'heure du PC](#lheure-du-pc)).
 
@@ -62,7 +62,7 @@ La passerelle note chaque échange (`Enregistré : BONJOUR.BAS (12 lignes)`) et 
 
 ## Copier des fichiers (menu 3)
 
-Dans le gestionnaire de la carte SD (menu 3 de rebootMinitel) :
+Dans le menu 3 de rebootMinitel, « Fichiers » (le gestionnaire de la carte SD) :
 
 - **de la carte vers le PC** : on choisit un fichier, puis `4 - Copier sur le PC`. Le fichier de même nom dans le dossier du PC est remplacé. Le nom doit suivre le format 8.3 (sur l'ESP32, la carte SD accepte des noms plus longs : ils sont refusés) ;
 - **du PC vers la carte** : depuis la liste, `ENVOI` affiche les fichiers du dossier du PC ; on tape une lettre, puis `ENVOI` pour copier le fichier sur la carte. Un fichier de même nom sur la carte est remplacé, après un avertissement.

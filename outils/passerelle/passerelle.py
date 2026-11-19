@@ -11,7 +11,7 @@ Minitel, reBASIC peut alors :
     MERGE "PC:NOM"   ajouter les lignes de NOM.BAS au programme en cours
     FILES "PC:"      lister les fichiers du dossier
 Elle donne aussi l'heure de l'ordinateur à une carte sans horloge RTC, et sert au menu 3
-(« Carte SD ») pour copier des fichiers entre la carte SD et l'ordinateur.
+(« Fichiers ») pour copier des fichiers entre la carte SD et l'ordinateur.
 
 Usage :
     python3 passerelle.py --dossier MES_PROGRAMMES [--port PORT] [--vitesse 9600]
@@ -26,7 +26,7 @@ protocole commencent par @.
             puis, pour chaque ligne : <- @SUITE  -> la ligne, ou @FIN
     FILES : <- @FILES         -> @OK, puis pour chaque fichier : <- @SUITE  -> "NOM.EXT taille" ou @FIN
     HEURE : <- @HEURE         -> @HEURE JJ/MM/AAAA hh:mm:ss   (carte sans horloge RTC)
-Copie de fichiers quelconques (menu 3, « Carte SD ») : les octets voyagent en hexadécimal,
+Copie de fichiers quelconques (menu 3, « Fichiers ») : les octets voyagent en hexadécimal,
 32 octets (64 caractères) par ligne.
     ECRIRE : <- @ECRIRE NOM.EXT  -> @OK  <- lignes hexadécimales, puis @FIN  -> @OK
     LIRE   : <- @LIRE NOM.EXT    -> @OK (ou @ERR INTROUVABLE), puis <- @SUITE -> une ligne, ou @FIN
