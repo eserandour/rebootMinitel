@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Test de la passerelle avec le simulateur de reBASIC (le vrai Basic.ino, compilé sur PC) :
-SAVE, LOAD, MERGE et FILES "PC:", fichier introuvable, PC absent, et l'heure (@HEURE).
+SAVE, LOAD, MERGE et FILES "PC:", fichier introuvable, PC absent, l'heure (@HEURE),
+et la copie de fichiers du menu 3 (@ECRIRE, @LIRE).
 
 Usage : python3 tester.py   (Linux ou macOS ; compile le simulateur si besoin)
 """
@@ -120,6 +121,30 @@ def main():
     r = p.recevoir(b'@HEURE')
     bon &= verifier('@HEURE : date et heure de l\'ordinateur', len(r) == 1 and re.fullmatch(rb'@HEURE \d\d/\d\d/\d{4} \d\d:\d\d:\d\d', r[0]) is not None, [repr(r)])
     bon &= verifier('@HEURE n\'interrompt pas un LOAD', p.recevoir(b'@SUITE')[0].startswith(b'10 PRINT'), [])
+
+    # 9. Copie de fichiers quelconques (menu 3) : @ECRIRE et @LIRE, en hexadécimal
+    octets = bytes(range(256)) * 3 + b'\x1b\x0c\r\n'
+    p = Passerelle(pc)
+    reponses = p.recevoir(b'@ECRIRE page.vdt')
+    texte = octets.hex().upper().encode('ascii')
+    for i in range(0, len(texte), 64):
+        reponses += p.recevoir(texte[i:i + 64])
+    reponses += p.recevoir(b'@FIN')
+    bon &= verifier('@ECRIRE : copie à l\'octet près', reponses == [b'@OK', b'@OK']
+                    and open(os.path.join(pc, 'PAGE.VDT'), 'rb').read() == octets, [repr(reponses)])
+    relu, lignes = b'', 0
+    if p.recevoir(b'@LIRE PAGE.VDT') == [b'@OK']:
+        while True:
+            r = p.recevoir(b'@SUITE')[0]
+            if r == b'@FIN':
+                break
+            relu += bytes.fromhex(r.decode('ascii'))
+            lignes += 1
+    bon &= verifier('@LIRE : 32 octets par ligne, à l\'octet près', relu == octets and lignes == (len(octets) + 31) // 32, [])
+    p.recevoir(b'@ECRIRE ABIME.VDT')
+    p.recevoir(b'4G')
+    bon &= verifier('@ECRIRE : données abîmées refusées', p.recevoir(b'@FIN') == [b'@ERR DONNEES']
+                    and not os.path.exists(os.path.join(pc, 'ABIME.VDT')), [])
 
     shutil.rmtree(pc)
     print('Tous les tests sont passés.' if bon else 'Des tests ont échoué.')

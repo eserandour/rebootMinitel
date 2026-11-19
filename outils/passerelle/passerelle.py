@@ -10,7 +10,8 @@ Minitel, reBASIC peut alors :
     LOAD "PC:NOM"    charger NOM.BAS depuis ce dossier
     MERGE "PC:NOM"   ajouter les lignes de NOM.BAS au programme en cours
     FILES "PC:"      lister les fichiers du dossier
-Elle donne aussi l'heure de l'ordinateur à une carte sans horloge RTC.
+Elle donne aussi l'heure de l'ordinateur à une carte sans horloge RTC, et sert au menu 3
+(« Carte SD ») pour copier des fichiers entre la carte SD et l'ordinateur.
 
 Usage :
     python3 passerelle.py --dossier MES_PROGRAMMES [--port PORT] [--vitesse 9600]
@@ -25,6 +26,10 @@ protocole commencent par @.
             puis, pour chaque ligne : <- @SUITE  -> la ligne, ou @FIN
     FILES : <- @FILES         -> @OK, puis pour chaque fichier : <- @SUITE  -> "NOM.EXT taille" ou @FIN
     HEURE : <- @HEURE         -> @HEURE JJ/MM/AAAA hh:mm:ss   (carte sans horloge RTC)
+Copie de fichiers quelconques (menu 3, « Carte SD ») : les octets voyagent en hexadécimal,
+32 octets (64 caractères) par ligne.
+    ECRIRE : <- @ECRIRE NOM.EXT  -> @OK  <- lignes hexadécimales, puis @FIN  -> @OK
+    LIRE   : <- @LIRE NOM.EXT    -> @OK (ou @ERR INTROUVABLE), puis <- @SUITE -> une ligne, ou @FIN
 """
 
 import argparse
@@ -46,7 +51,7 @@ class Passerelle:
 
     def __init__(self, dossier):
         self.dossier = os.path.abspath(dossier)
-        self.enregistrement = None   # (nom, lignes) pendant un SAVE
+        self.enregistrement = None   # (nom, lignes, binaire) pendant un SAVE ou un ECRIRE
         self.envoi = None            # Lignes qui restent à envoyer (LOAD, FILES)
         self.heure_donnee = False    # Pour ne noter que la première remise à l'heure
 
@@ -89,8 +94,15 @@ class Passerelle:
             return [b'@FIN']
 
         if demande == '@FIN' and self.enregistrement is not None:
-            nom, lignes = self.enregistrement
+            nom, lignes, binaire = self.enregistrement
             self.enregistrement = None
+            if binaire:
+                try:
+                    contenu = bytes.fromhex(b''.join(lignes).decode('ascii'))
+                except ValueError:
+                    journal('Données abîmées : ' + nom)
+                    return [b'@ERR DONNEES']
+                return [self.ecrire_octets(nom, contenu, 'Copié depuis la carte : %s (%d octets)' % (nom, len(contenu)))]
             return [self.ecrire(nom, lignes)]
 
         # Une nouvelle demande abandonne celle qui était en cours
@@ -100,7 +112,30 @@ class Passerelle:
         if demande == '@SAVE':
             if not NOM_83.match(argument):
                 return [b'@ERR NOM']
-            self.enregistrement = (argument, [])
+            self.enregistrement = (argument, [], False)
+            return [b'@OK']
+
+        if demande == '@ECRIRE':
+            if not NOM_83.match(argument):
+                return [b'@ERR NOM']
+            self.enregistrement = (argument, [], True)
+            return [b'@OK']
+
+        if demande == '@LIRE':
+            if not NOM_83.match(argument):
+                return [b'@ERR NOM']
+            chemin = self.chemin(argument)
+            if not os.path.isfile(chemin):
+                journal('Introuvable : ' + argument)
+                return [b'@ERR INTROUVABLE']
+            try:
+                with open(chemin, 'rb') as f:
+                    contenu = f.read()
+            except OSError as e:
+                journal('Lecture impossible : %s (%s)' % (argument, e))
+                return [b'@ERR LECTURE']
+            self.envoi = [contenu[i:i + 32].hex().upper().encode('ascii') for i in range(0, len(contenu), 32)]
+            journal('Copie vers la carte : %s (%d octets)' % (os.path.basename(chemin), len(contenu)))
             return [b'@OK']
 
         if demande == '@LOAD':
@@ -136,19 +171,22 @@ class Passerelle:
         return [b'@ERR INCONNU']
 
     def ecrire(self, nom, lignes):
-        # Même format que SAVE sur la carte SD : une ligne par ligne de programme, fin CR LF.
-        # On écrit d'abord un fichier provisoire : un transfert interrompu n'abîme rien.
+        # Même format que SAVE sur la carte SD : une ligne par ligne de programme, fin CR LF
+        return self.ecrire_octets(nom, b''.join(l + b'\r\n' for l in lignes),
+                                  'Enregistré : %s (%d lignes)' % (nom, len(lignes)))
+
+    def ecrire_octets(self, nom, contenu, message):
+        # On écrit d'abord un fichier provisoire : un transfert interrompu n'abîme rien
         chemin = self.chemin(nom)
         provisoire = chemin + '.tmp'
         try:
             with open(provisoire, 'wb') as f:
-                for l in lignes:
-                    f.write(l + b'\r\n')
+                f.write(contenu)
             os.replace(provisoire, chemin)
         except OSError as e:
             journal('Écriture impossible : %s (%s)' % (nom, e))
             return b'@ERR ECRITURE'
-        journal('Enregistré : %s (%d lignes)' % (os.path.basename(chemin), len(lignes)))
+        journal(message)
         return b'@OK'
 
 
