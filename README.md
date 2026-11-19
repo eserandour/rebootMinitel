@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.19d)
+# rebootMinitel (version 2026.11.19e)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
@@ -24,7 +24,7 @@ Site : <https://entropie.org/3615>
 - [Compilation](#compilation)
 - [Utilisation](#utilisation)
   - [Pages Vidéotex (menu 2)](#pages-vidéotex-menu-2)
-  - [Carte SD (menu 3)](#carte-sd-menu-3)
+  - [Fichiers (menu 3)](#fichiers-menu-3)
   - [Pong (menu 4)](#pong-menu-4)
 - [Minitel virtuel](#minitel-virtuel)
 - [reBASIC](#rebasic)
@@ -88,7 +88,7 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 | `0` | Réglage de l'horloge (saisie JJ/MM/AAAA hh:mm, `CORRECTION` pour effacer, `SOMMAIRE` pour revenir sans modifier) ; sans horloge DS3231, règle l'horloge logicielle |
 | `1` | reBASIC |
 | `2` | Pages Vidéotex (voir ci-dessous) |
-| `3` | Carte SD (voir ci-dessous) |
+| `3` | Fichiers : la carte SD, et la copie avec le PC (voir ci-dessous) |
 | `4` | Pong (voir ci-dessous) |
 | `5` | À propos |
 
@@ -104,9 +104,9 @@ Le menu 2 affiche les **pages Minitel** de la carte SD : les fichiers `.VDT` pla
 | `SOMMAIRE` | Retour au menu, même pendant l'affichage d'une page |
 
 
-### Carte SD (menu 3)
+### Fichiers (menu 3)
 
-Le menu 3 est un **gestionnaire de la carte SD** : il liste les fichiers de la racine de la carte par ordre alphabétique, avec leur taille, seize par écran (`SUITE` et `RETOUR` changent d'écran). Chaque fichier est repéré par une lettre, de `A` à `P` ; on tape la lettre pour le choisir, puis :
+Le menu 3, « Fichiers », est un **gestionnaire de la carte SD** : il liste les fichiers de la racine de la carte par ordre alphabétique, avec leur taille, seize par écran (`SUITE` et `RETOUR` changent d'écran). Chaque fichier est repéré par une lettre, de `A` à `P` ; on tape la lettre pour le choisir, puis :
 
 | Touche | Effet |
 |---|---|
@@ -126,7 +126,7 @@ Le jeu de Pong, en semi-graphique : `0` Minitel contre Minitel (une démonstrati
 
 ## Minitel virtuel
 
-Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, pages Vidéotex, carte SD, Pong, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
+Le dossier [`outils/minitel-virtuel/`](outils/minitel-virtuel/) fait tourner rebootMinitel **dans un navigateur**, sans Minitel ni Arduino : ouvrez `index.html`. On y retrouve l'écran d'accueil (menu, date et heure, réglage de l'horloge, pages Vidéotex, fichiers de la carte SD, Pong, « À propos ») et reBASIC, sur l'écran d'un Minitel 1B dessiné avec sa police (les 128 caractères du processeur EF9345) et son clavier complet.
 
 <img src="photos/minitel-virtuel.png" height="600" alt="Le Minitel virtuel : l'écran d'accueil de rebootMinitel et le clavier du Minitel 1B">
 

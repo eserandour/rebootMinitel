@@ -86,7 +86,7 @@ void ecranAccueil()
          minitel.moveCursorXY(20,18);
          minitel.println(F("2 - Pages Vidéotex"));
          minitel.moveCursorXY(20,19);
-         minitel.println(F("3 - Carte SD"));
+         minitel.println(F("3 - Fichiers"));
          minitel.moveCursorXY(20,20);
          minitel.println(F("4 - Pong"));
          minitel.moveCursorXY(20,21);
