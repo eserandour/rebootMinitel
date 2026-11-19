@@ -68,16 +68,16 @@ void pongRaquette(byte* cases, int x, int haut, boolean allume)
 void pongScore()
 {
   // Le score en haut, en double largeur (deux colonnes par chiffre), symétrique par rapport
-  // au milieu de l'écran : le chiffre des unités de gauche (colonnes 17-18) fait face au
-  // premier chiffre de droite (colonnes 23-24). Les scores ne font que grandir : à gauche,
+  // au milieu de l'écran : le chiffre des unités de gauche (colonnes 15-16) fait face au
+  // premier chiffre de droite (colonnes 25-26). Les scores ne font que grandir : à gauche,
   // un nouveau chiffre s'ajoute devant ; à droite, derrière.
   char t[8];
   snprintf_P(t, sizeof(t), PSTR("%d"), pongScoreG);
-  minitel.moveCursorXY(19 - 2 * strlen(t), 1);
+  minitel.moveCursorXY(17 - 2 * strlen(t), 1);
   minitel.attributs(DOUBLE_LARGEUR);
   minitel.print(t);
   snprintf_P(t, sizeof(t), PSTR("%d"), pongScoreD);
-  minitel.moveCursorXY(23, 1);
+  minitel.moveCursorXY(25, 1);
   minitel.attributs(DOUBLE_LARGEUR);  // Un positionnement remet la taille normale
   minitel.print(t);
   minitel.attributs(GRANDEUR_NORMALE);
