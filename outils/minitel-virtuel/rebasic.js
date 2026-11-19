@@ -3026,13 +3026,13 @@
         return bouger(haut, cible < haut ? -1 : 1);
       };
       const score = () => {
-        // Symétrique par rapport au milieu : unités de gauche en 17-18, premier chiffre de
-        // droite en 23-24 (comme pongScore)
+        // Symétrique par rapport au milieu : unités de gauche en 15-16, premier chiffre de
+        // droite en 25-26 (comme pongScore)
         const tg = String(scoreG), td = String(scoreD);
-        moveXY(19 - 2 * tg.length, 1);
+        moveXY(17 - 2 * tg.length, 1);
         wb(0x1B); wb(0x4E);  // Double largeur
         puts(tg);
-        moveXY(23, 1);
+        moveXY(25, 1);
         wb(0x1B); wb(0x4E);  // Un positionnement remet la taille normale
         puts(td);
         wb(0x1B); wb(GRANDEUR_NORMALE);
@@ -3047,7 +3047,7 @@
       gfxClear();
       let cases = new Uint8Array(960);
       for (let x = 0; x < 80; x++) { gfxMark(cases, x, PONG_HAUT, true); gfxMark(cases, x, PONG_BAS, true); }
-      for (let y = PONG_HAUT + 2; y < PONG_BAS; y += 4) gfxMark(cases, 39, y, true);
+      for (let y = PONG_HAUT + 2; y < PONG_BAS; y += 4) gfxMark(cases, 39, y, true);  // Le filet
       g = d = Math.trunc((PONG_HAUT + PONG_BAS - PONG_RAQUETTE) / 2);
       raquette(cases, PONG_X_GAUCHE, g, true);
       raquette(cases, PONG_X_DROITE, d, true);
