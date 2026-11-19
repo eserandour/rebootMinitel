@@ -49,6 +49,7 @@ C'est du Markdown (version pandoc). Les programmes sont dans des blocs `basic`, 
 | `rows=N`, `first=N`, `last=N` | cadrage de l'image |
 | `limit=N` | attentes avant d'interrompre une boucle sans fin |
 | `erreur` | une erreur est attendue (exemple qui montre un message d'erreur) |
+| `pc` | la [passerelle](../passerelle/) est branchée, avec le dossier `sortie/pc` (pour `SAVE "PC:NOM"`…) |
 
 Les encadrés s'écrivent ainsi :
 

@@ -18,8 +18,8 @@ Toutes les images d'écran de ce document ont été produites en exécutant rée
 ## Ce qu'il vous faut
 
 - un Minitel 1B relié à la carte rebootMinitel (Arduino Mega et Shield 3615 Mega) ;
-- une carte microSD dans le lecteur, pour enregistrer vos programmes (chapitre 14) ;
-- l'horloge DS3231, pour les fonctions de date et d'heure (chapitre 13).
+- une carte microSD dans le lecteur, pour enregistrer vos programmes (chapitre 14) ; on peut aussi les enregistrer sur un ordinateur relié par le câble USB ;
+- l'horloge DS3231, pour les fonctions de date et d'heure (chapitre 13) ; sans elle, rebootMinitel peut prendre l'heure de l'ordinateur.
 
 Sans Minitel sous la main, vous pouvez aussi essayer les exemples dans le **Minitel virtuel** : ouvrez `outils/minitel-virtuel/index.html` dans un navigateur. C'est le même reBASIC, sur un écran et un clavier de Minitel 1B dessinés dans la page.
 
@@ -1229,7 +1229,14 @@ Grâce à l'horloge de la carte rebootMinitel, reBASIC connaît la date et l'heu
 ```
 <!--ecran-->
 
-L'heure se règle dans le menu **0 – Réglage Horloge** de l'écran d'accueil. Sans horloge, ces fonctions donnent l'erreur « Horloge absente ».
+L'heure se règle dans le menu **0 – Réglage Horloge** de l'écran d'accueil.
+
+Sans horloge DS3231 (shield sans horloge, ou ESP32 seul), rebootMinitel compte l'heure lui-même, à partir de celle qu'on lui donne :
+
+- si la carte est reliée à un ordinateur par son câble USB et que la **passerelle** tourne (voir « Enregistrer sur l'ordinateur », au chapitre suivant), il prend l'heure de l'ordinateur, tout seul ;
+- sinon, on la règle dans le menu 0, comme pour l'horloge DS3231.
+
+Cette heure est perdue quand la carte s'éteint. Si l'heure n'est connue d'aucune de ces façons, les fonctions de date et d'heure donnent l'erreur « Horloge absente ».
 
 ## Une horloge à l'écran
 
@@ -1287,6 +1294,46 @@ FILES
 
 ::: {custom-style="Astuce"}
 **Astuce** — `MERGE` permet de se constituer une bibliothèque de sous-programmes (un titre encadré, un menu…) numérotés à partir de 1000, que l'on ajoute à ses nouveaux programmes.
+:::
+
+## Enregistrer sur l'ordinateur : `PC:`
+
+La carte peut rester reliée à un ordinateur par son câble USB. Avec `PC:` devant le nom, les programmes sont enregistrés et chargés **dans un dossier de l'ordinateur**, au lieu de la carte SD :
+
+| Commande | Effet |
+|---|---|
+| `SAVE "PC:NOM"` | enregistre le programme dans `NOM.BAS`, sur l'ordinateur |
+| `LOAD "PC:NOM"` | charge `NOM.BAS` depuis l'ordinateur |
+| `MERGE "PC:NOM"` | ajoute les lignes de `NOM.BAS` au programme en cours |
+| `FILES "PC:"` | liste les fichiers du dossier de l'ordinateur |
+
+Sur l'ordinateur, un petit programme doit tourner : la **passerelle**, `passerelle.py`, dans le dossier `outils/passerelle` de rebootMinitel. Il lui faut Python 3 et la bibliothèque pyserial (`python3 -m pip install pyserial`). On la lance dans un terminal, en lui donnant le dossier où ranger les programmes :
+
+```
+python3 passerelle.py --dossier ~/Documents/reBASIC
+```
+
+Elle répond ensuite aux demandes du Minitel, jusqu'à ce qu'on l'arrête (Ctrl-C).
+
+```basic
+NEW
+10 PRINT "Bonjour de l'ordinateur !"
+SAVE "PC:BONJOUR"
+FILES "PC:"
+NEW
+LOAD "PC:BONJOUR"
+RUN
+```
+<!--ecran mode=direct pc-->
+
+Les fichiers sont les mêmes que ceux de la carte SD : on peut les écrire ou les corriger dans un éditeur de texte de l'ordinateur, puis les charger sur le Minitel avec `LOAD "PC:NOM"`.
+
+::: {custom-style="Attention"}
+**Attention** — Si la passerelle ne tourne pas, reBASIC répond « PC absent » au bout de 3 secondes. Pensez aussi à fermer le moniteur série de l'IDE Arduino : un seul programme à la fois peut utiliser le câble USB. Et l'Arduino Mega redémarre quand la passerelle démarre : lancez-la avant de taper votre programme.
+:::
+
+::: {custom-style="Astuce"}
+**Astuce** — Pour copier des fichiers entre la carte SD et l'ordinateur (programmes, pages Vidéotex, fichiers de données), utilisez le menu **3 – Carte SD** de l'écran d'accueil : `4` copie le fichier choisi sur l'ordinateur, et `ENVOI` montre les fichiers de l'ordinateur, que l'on peut copier sur la carte.
 :::
 
 ## Renuméroter : RENUM
@@ -1465,7 +1512,9 @@ Quand reBASIC rencontre un problème, il s'arrête et affiche trois informations
 | Ligne trop longue | `EDIT` d'une ligne de plus de 78 caractères (cela peut arriver après un `RENUM`) |
 | Trop d'imbrications | trop de parenthèses, de `GOSUB`, `FOR` ou `WHILE` imbriqués |
 | Plus de DATA | un `READ` de trop |
-| Fichier introuvable, Fichier non ouvert… | problème de fichier sur la carte SD |
+| Fichier introuvable, Fichier non ouvert… | problème de fichier sur la carte SD (ou sur l'ordinateur) |
+| PC absent | `SAVE "PC:…"`, `LOAD "PC:…"`… alors que la passerelle ne tourne pas sur l'ordinateur |
+| Horloge absente | `TIME$`, `DATE$`, `HOUR`… sans horloge DS3231 et sans heure réglée |
 | Interruption | vous avez appuyé sur ANNULATION ou SOMMAIRE |
 
 ## Chercher une erreur de logique
@@ -1753,7 +1802,7 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 
 ## Commandes
 
-`RUN` · `LIST [début][-fin] [/P]` · `EDIT n` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `FILES` · `KILL "NOM"`
+`RUN` · `LIST [début][-fin] [/P]` · `EDIT n` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `FILES` · `KILL "NOM"` · `SAVE "PC:NOM"` · `LOAD "PC:NOM"` · `MERGE "PC:NOM"` · `FILES "PC:"`
 
 ## Instructions
 
