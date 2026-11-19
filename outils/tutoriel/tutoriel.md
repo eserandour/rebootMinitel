@@ -1333,7 +1333,7 @@ Les fichiers sont les mêmes que ceux de la carte SD : on peut les écrire ou le
 :::
 
 ::: {custom-style="Astuce"}
-**Astuce** — Pour copier des fichiers entre la carte SD et l'ordinateur (programmes, pages Vidéotex, fichiers de données), utilisez le menu **3 – Carte SD** de l'écran d'accueil : `4` copie le fichier choisi sur l'ordinateur, et `ENVOI` montre les fichiers de l'ordinateur, que l'on peut copier sur la carte.
+**Astuce** — Pour copier des fichiers entre la carte SD et l'ordinateur (programmes, pages Vidéotex, fichiers de données), utilisez le menu **3 – Fichiers** de l'écran d'accueil : `4` copie le fichier choisi sur l'ordinateur, et `ENVOI` montre les fichiers de l'ordinateur, que l'on peut copier sur la carte.
 :::
 
 ## Renuméroter : RENUM
