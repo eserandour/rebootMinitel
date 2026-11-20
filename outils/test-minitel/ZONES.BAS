@@ -1,0 +1,26 @@
+10 REM Test des zones de fond et de soulignement sur un vrai Minitel
+20 CLS:E$=CHR$(27):U$=CHR$(31):GO$=CHR$(14):GF$=CHR$(15)
+30 PRINT "TEST DES ZONES (voir README)"
+40 LOCATE 1,3:PRINT "1 Fond"
+50 R=3:C=12:GOSUB 900:PRINT P$;GO$;E$;"W ";GF$;E$;"P";
+60 C=26:GOSUB 900:PRINT P$;GO$;E$;"P!";GF$;
+70 LOCATE 1,4:PRINT "A:12 à 25 blanc  B:12 seul"
+80 LOCATE 1,6:PRINT "2 Recalcul":LOCATE 16,6:PRINT "XYZ"
+90 R=6:C=22:GOSUB 900:PRINT P$;GO$;E$;"P!";GF$;
+100 C=12:GOSUB 900:PRINT P$;GO$;E$;"W ";GF$;E$;"P";
+110 LOCATE 1,7:PRINT "A:XYZ caché  B:XYZ visible"
+120 LOCATE 1,9:PRINT "3 Souligné":LOCATE 16,9:PRINT "TEXTE"
+130 R=9:C=12:GOSUB 900:PRINT P$;E$;"Z ";E$;"Y";
+140 LOCATE 1,10:PRINT "A:souligné  B:non souligné"
+150 LOCATE 1,12:PRINT "4 Efface"
+160 R=12:C=12:GOSUB 900:PRINT P$;E$;"W ";E$;"P";
+170 C=24:GOSUB 900:PRINT P$;CHR$(24);
+180 LOCATE 1,13:PRINT "A:noir dès 24  B:blanc"
+190 LOCATE 1,15:PRINT "5 Position"
+200 PRINT E$;"]";:R=15:C=12:GOSUB 900:PRINT P$;"US";E$;"\";
+210 PRINT E$;"]";:LOCATE 20,15:PRINT "CSI";E$;"\";
+220 LOCATE 1,16:PRINT "Inverse ? (US, puis CSI)"
+230 LOCATE 1,19:PRINT "Notez A ou B à chaque test."
+240 LOCATE 1,20:PRINT "ANNULATION pour finir."
+250 GOTO 250
+900 P$=U$+CHR$(64+R)+CHR$(64+C):RETURN

@@ -16,7 +16,7 @@ Ouvrez **`index.html`** dans un navigateur : rebootMinitel démarre sur son écr
 `rebasic.js` fait tourner **reBASIC**, le BASIC de [rebootMinitel](https://github.com/eserandour/rebootMinitel), dans un navigateur, sur l'écran d'un Minitel virtuel. Un seul fichier, sans dépendance : il suffit de le copier à côté d'une page web pour y mettre un Minitel.
 
 - **L'interpréteur** est un portage ligne à ligne de `Basic.ino` : mêmes instructions, mêmes messages d'erreur (avec la vidéo inverse à l'endroit fautif), mêmes limites que l'Arduino Mega (2304 octets pour le programme et les tableaux, mots-clés comptés comme sur la carte, où ils sont tokenisés ; chaînes de 32 octets…), nombres en `float` 32 bits comme sur l'ATmega.
-- **L'écran** reçoit le même flux Videotex que le vrai Minitel (codes de commande, attributs ESC, US, SS2 pour les accents, semi-graphiques) et l'interprète avec les règles du STUM 1B : attributs de zone validés par un espace, double hauteur dessinée vers le haut et sans effet sur la rangée 1, semi-graphique qui annule taille, inversion et soulignement, mode rouleau.
+- **L'écran** reçoit le même flux Videotex que le vrai Minitel (codes de commande, attributs ESC, US, SS2 pour les accents, semi-graphiques) et l'interprète avec les règles du STUM 1B : attributs de zone validés par un espace (ou par un semi-graphique, pour le fond), avec le fond des cases recalculé quand on récrit un délimiteur, comme sur un Minitel 1B (voir [`test-minitel/`](../test-minitel/)), double hauteur dessinée vers le haut et sans effet sur la rangée 1, semi-graphique qui annule taille, inversion et soulignement, mode rouleau.
 - **La police** est celle du Minitel : les 128 caractères du jeu G0 du processeur EF9345, matrice de 8 × 10 points (relevés par Frédéric Bisson pour [MiEdit](https://github.com/Zigazou/miedit)), dessinés point par point, sans lissage, en taille normale comme en double hauteur, largeur ou taille. Les lettres ä, ë, î, ö et ü, qui n'ont pas de dessin propre, s'affichent sans leur tréma ou leur accent.
 - **Les caractères** passent par la même table de conversion que `print()` dans Minitel1B_Hard : lettres accentuées minuscules, £ ° ± ¼ ½ ¾ § ÷ Œ œ ← ↑ → ↓ —. Le Minitel n'a pas de majuscules accentuées : « À », « É »… s'affichent « A », « E »… (c'est pourquoi le menu affiche « A propos »). Un caractère inconnu du Minitel n'est pas affiché.
 - **Le rythme** est celui de la machine : les octets arrivent à 4800 bauds (l'Arduino attend que son tampon série de 64 octets se vide), et l'interpréteur exécute 1000 instructions par seconde, comme le simulateur de rebootMinitel. Les deux réglages sont modifiables.
@@ -149,7 +149,7 @@ ReBASIC.creer(el, {
 
 ## Le son
 
-`SOUND f, ms` joue un signal carré (le buzzer de la carte) et `BEEP` le bip du Minitel, avec Web Audio. Les navigateurs n'autorisent le son qu'après un geste de l'utilisateur : le premier clic sur l'écran ou la première touche le débloquent.
+`SOUND f, ms` et les notes de `PLAY` jouent un signal carré (le buzzer de la carte) et `BEEP` le bip du Minitel, avec Web Audio. Les navigateurs n'autorisent le son qu'après un geste de l'utilisateur : le premier clic sur l'écran ou la première touche le débloquent.
 
 ## Différences avec le vrai Minitel
 

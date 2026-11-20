@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.20a';  // Celle de rebootMinitel
+  const VERSION = '2026.11.20b';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -151,7 +151,8 @@
     'SECOND', 'DAY', 'MONTH', 'YEAR', 'DREAD', 'AREAD', 'EOF', 'HEX$',
     'UPPER$', 'LOWER$', 'OPEN', 'CLOSE', 'OUTPUT', 'APPEND', 'PINMODE', 'DWRITE',
     'AWRITE', 'LET', 'RUN', 'LIST', 'NEW', 'MEM', 'RENUM', 'AIDE',
-    'HELP', 'SAVE', 'LOAD', 'MERGE', 'FILES', 'KILL', 'EDIT'
+    'HELP', 'SAVE', 'LOAD', 'MERGE', 'FILES', 'KILL', 'EDIT', 'FLIP',
+    'PLAY', 'BIG', 'SAVEVDT'
   ];
   const TOK_UN = 64;
   const estLettre = (ch) => ch !== undefined && ch >= 'A' && ch <= 'Z';
@@ -185,6 +186,38 @@
       i += TOK_NOMS[id].length;
     }
     return n;
+  }
+
+  function motCle(s, i) {
+    // Le mot-clé qui commence en i, comme basTokFind (son numéro, -1 s'il n'y en a pas) :
+    // dans Basic.ino, il serait rangé sous forme de token
+    for (let k = 0; k < TOK_NOMS.length; k++) {
+      const nom = TOK_NOMS[k];
+      if (!s.startsWith(nom, i)) continue;
+      if (estLettre(nom[nom.length - 1]) && estLettre(s[i + nom.length])) continue;
+      return k;
+    }
+    return -1;
+  }
+
+  function contientMot(s, mot) {
+    // Le texte s (en majuscules) contient-il ce mot-clé là où basTokenize le rangerait en token ?
+    let i = 0, brut = false, donnees = false, guillemets = false;
+    while (i < s.length) {
+      const ch = s[i];
+      if (ch === '"') guillemets = !guillemets;
+      if (guillemets || brut || ch === '"') { i++; continue; }
+      if (donnees) { if (ch === ':') donnees = false; i++; continue; }
+      if (ch === "'") { brut = true; i++; continue; }
+      if (!estLettre(ch)) { i++; continue; }
+      if (s.startsWith('REM', i)) brut = true;
+      else if (s.startsWith('DATA', i)) donnees = true;
+      const id = motCle(s, i);
+      if (id < 0) { while (estLettre(s[i])) i++; continue; }
+      if (TOK_NOMS[id] === mot) return true;
+      i += TOK_NOMS[id].length;
+    }
+    return false;
   }
 
   function u8tronquer(s, max) {
@@ -372,6 +405,14 @@
       else if (b === 0x43) { this.c = Math.min(39, this.c + n); this.zoneIci(); }
       else if (b === 0x44) { this.c = Math.max(0, this.c - n); this.zoneIci(); }
       else if (b === 0x4B) { this.effacerFinRangee(); }
+      else if (b === 0x48) {  // CSI rangée ; colonne H (positionnement, comme minitel.moveCursorXY)
+        const [y, x] = this.csi.split(';').map((v) => parseInt(v, 10) || 1);
+        this.rangee0 = false;
+        this.r = Math.min(23, Math.max(0, y - 1));
+        this.c = Math.min(39, Math.max(0, (x || 1) - 1));
+        this.zoneIci();
+        this.modifie = true;
+      }
     }
 
     effacerFinRangee() {
@@ -451,6 +492,7 @@
       if (this.modeGraphique) {
         // Caractère semi-graphique : on range ses 6 points dans l'ordre de reBASIC
         // (bit 5 en haut à gauche ... bit 0 en bas à droite)
+        if (b === 0x5F) { this.poser(' ', true, 63); return; }  // Le pavé plein (Minitel1B_Hard l'envoie ainsi)
         if (b < 0x20 || (b >= 0x40 && b < 0x60)) return;
         const p = ((b & 1) ? 32 : 0) | ((b & 2) ? 16 : 0) | ((b & 4) ? 8 : 0) |
           ((b & 8) ? 4 : 0) | ((b & 16) ? 2 : 0) | ((b & 64) ? 1 : 0);
@@ -529,10 +571,11 @@
     // Les variables
     const vars = new Float32Array(26);
     const strs = new Array(26).fill('');
-    const arr = new Float32Array(MEM_FLOATS);  // Les éléments des tableaux sont à la fin
-    const arrBase = new Int32Array(26).fill(-1);
-    const arrDim = new Int32Array(26);
+    // Les tableaux et les variables de deux caractères (voir basObj dans Basic.ino) : ils
+    // occupent arrUsed nombres de 4 octets à la fin de la mémoire, comme sur la carte
+    let objets = new Map();  // 'genre:nom' -> { n, v: valeurs (Float32Array ou chaînes) }
     let arrUsed = 0;
+    const STR_FLOATS = Math.floor((STR_MAX + 4) / 4);
     let chaine = false;  // CHAIN en cours : les tableaux doivent être gardés
     const libre = () => MEM_SIZE - progLen - 4 * arrUsed;
 
@@ -565,7 +608,9 @@
     //////////////////////////////////////////////////////////////////////////////
     // Affichage
 
-    const wb = (b) => env.octet(b);
+    // SAVEVDT : ce que le programme affiche est aussi gardé dans capture (voir Basic.ino)
+    let capture = null;
+    const wb = (b) => { env.octet(b); if (capture) capture.push(b); };
 
     function avance() {
       col += (style & ST_LARGE) ? 2 : 1;
@@ -580,7 +625,14 @@
       if (a === DOUBLE_HAUTEUR || a === DOUBLE_GRANDEUR) wb(0x0A);
     }
 
-    function moveXY(x, y) { wb(0x1F); wb(0x40 + y); wb(0x40 + x); }
+    // Les mêmes séquences que Minitel1B_Hard (et basMoveXY, basMove dans Basic.ino)
+    function moveXY(x, y) {
+      wb(0x1B); wb(0x5B);
+      for (const ch of String(y)) wb(ch.charCodeAt(0));
+      wb(0x3B);
+      for (const ch of String(x)) wb(ch.charCodeAt(0));
+      wb(0x48);
+    }
 
     function csi(n, f) {
       wb(0x1B); wb(0x5B);
@@ -588,9 +640,9 @@
       wb(f);
     }
 
-    function moveUp(n) { if (n <= 4) { for (let i = 0; i < n; i++) wb(0x0B); } else csi(n, 0x41); }
-    function moveRight(n) { if (n <= 4) { for (let i = 0; i < n; i++) wb(0x09); } else csi(n, 0x43); }
-    function moveLeft(n) { if (n <= 4) { for (let i = 0; i < n; i++) wb(0x08); } else csi(n, 0x44); }
+    function moveUp(n) { if (n === 1) wb(0x0B); else if (n > 1) csi(n, 0x41); }
+    function moveRight(n) { if (n === 1) wb(0x09); else if (n > 1) csi(n, 0x43); }
+    function moveLeft(n) { if (n === 1) wb(0x08); else if (n > 1) csi(n, 0x44); }
     function clearLineFromCursor() { wb(0x1B); wb(0x5B); wb(0x4B); }
     function newScreen() { wb(0x0C); }
     function bip() { wb(0x07); }
@@ -704,14 +756,14 @@
       attributs(FOND_NORMAL);
     }
 
-    const HELP_PAGES = 4;
+    const HELP_PAGES = 5;
     const AIDE = [
       ['Commandes :', ' RUN LIST [n][-m] [/P] NEW MEM AIDE', ' EDIT n  RENUM [d\u00e9but][,pas]',
         ' SAVE "NOM" LOAD "NOM" MERGE "NOM"', ' FILES KILL "NOM"', ' CHAIN "NOM" (garde les variables)', ' "PC:NOM" FILES "PC:" : sur le PC', '',
         'Instructions :', ' PRINT (ou ?) avec ; , TAB(n)', ' INPUT ["texte";] v[,v...]',
         ' [LET] v = expression', ' IF cond THEN ... [ELSE ...]', ' GOTO n  GOSUB n  RETURN',
         ' ON x GOTO n1,n2...  ON x GOSUB ...', ' FOR v=a TO b [STEP c] ... NEXT [v]',
-        ' WHILE cond ... WEND', ' DATA  READ v[,v...]  RESTORE [n]', ' DIM A(n)  REM  END  STOP'],
+        ' WHILE cond ... WEND', ' DATA  READ v[,v...]  RESTORE [n]', ' DIM A(n) A$(n)  REM  END  STOP'],
       ['Ecran (couleurs 0 \u00e0 7) :', ' CLS  LOCATE col,rang', ' VDT "NOM" : page Vid\u00e9otex NOM.VDT', ' COLOR n  PAPER n (fond)',
         ' INVERSE n  FLASH n  UNDERLINE n', ' SIZE n (0 normale, 1 double hauteur,',
         '  2 double largeur, 3 double taille)', ' PAPER et UNDERLINE commencent au',
@@ -727,7 +779,8 @@
       ['Fichiers de donn\u00e9es (.TXT) :', ' OPEN "NOM" FOR INPUT AS #1', '  (ou OUTPUT, APPEND ; #1 ou #2)',
         ' PRINT #1,...  INPUT #1,v[,v...]', ' LINE INPUT #1,A$  EOF(1)', ' CLOSE [#1]', '',
         'Broches :', ' PINMODE b,m (0 entr\u00e9e, 1 sortie,', '  2 entr\u00e9e avec r\u00e9sistance de tirage',
-        '  interne, bouton vers GND : appuy\u00e9=0)', ' DWRITE b,v  AWRITE b,v (0 \u00e0 255)', ' DREAD(b)  AREAD(a)', '']
+        '  interne, bouton vers GND : appuy\u00e9=0)', ' DWRITE b,v  AWRITE b,v (0 \u00e0 255)', ' DREAD(b)  AREAD(a)', ''],
+      ["Variables :", " A \u00e0 Z, AB, A1 (2 caract\u00e8res au plus)", " A$, AB$ : cha\u00eenes ; DIM A(n), A$(n)", "", "Musique (en t\u00e2che de fond) :", " PLAY \"T120 O4 L4 C D E8 F8 G2\"", "  A-G (# + -), R silence, O octave,", "  L dur\u00e9e, T tempo, < >", "  PLAY seul arr\u00eate la musique", "", "Dessin :", " FLIP : dessin diff\u00e9r\u00e9, puis envoie", "  les cases chang\u00e9es (FLIP 0 : fin)", " BIG \"TEXTE\",x,y[,taille[,c]]", "", "Ecran :", " SAVEVDT \"NOM\" (dans un programme) :", "  enregistre l'\u00e9cran en page NOM.VDT"]
     ];
 
     function helpPage(page) {
@@ -819,6 +872,7 @@
       if (garder) { buf = initial; puts(buf); }
       wb(0x11);  // Curseur visible
       while (resultat < 0) {
+        musique();
         if (invite && env.commandeEnAttente()) { resultat = K_COMMANDE; break; }
         if (arretExterne && !invite) { resultat = K_ANNULER; break; }
         const k = env.cle();
@@ -848,7 +902,129 @@
       return [resultat, buf];
     }
 
+    //////////////////////////////////////////////////////////////////////////////
+    // La musique en tâche de fond (PLAY) : voir Basic.ino
+
+    let playT = null, playI = 0, playFin = 0;   // La mélodie (texte, position), fin de la note
+    let playOct = 4, playLong = 4, playTempo = 120;
+    const PLAY_FREQ = [262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494];
+
+    function playNombre(t, i) {
+      if (!isD(t.charCodeAt(i))) return [-1, i];
+      let n = 0;
+      while (isD(t.charCodeAt(i)) && n < 1000) n = n * 10 + (t.charCodeAt(i++) - 48);
+      return [n, i];
+    }
+
+    function playPas(t, i, jouer) {
+      // Comme basPlayPas : la position après la prochaine note (-1 : texte incorrect)
+      while (i < t.length && t[i] !== '"') {
+        let c = t[i++];
+        if (c >= 'a' && c <= 'z') c = c.toUpperCase();
+        if (c === ' ') continue;
+        if (c === '<') { if (playOct > 0) playOct--; continue; }
+        if (c === '>') { if (playOct < 7) playOct++; continue; }
+        if (c === 'O' || c === 'L' || c === 'T') {
+          const [n, j] = playNombre(t, i);
+          i = j;
+          if (c === 'O' && n >= 0 && n <= 7) playOct = n;
+          else if (c === 'L' && n >= 1 && n <= 64) playLong = n;
+          else if (c === 'T' && n >= 32 && n <= 255) playTempo = n;
+          else return -1;
+          continue;
+        }
+        let demiTon = -1;
+        if (c >= 'A' && c <= 'G') {
+          demiTon = [9, 11, 0, 2, 4, 5, 7][c.charCodeAt(0) - 65];
+          if (t[i] === '#' || t[i] === '+') { demiTon++; i++; }
+          else if (t[i] === '-') { demiTon--; i++; }
+        }
+        else if (c !== 'R' && c !== 'P') return -1;
+        let [longueur, j] = playNombre(t, i);
+        i = j;
+        if (longueur === 0 || longueur > 64) return -1;
+        if (longueur < 0) longueur = playLong;
+        let duree = Math.floor(240000 / (playTempo * longueur));
+        let ajout = duree;
+        while (t[i] === '.') { ajout = Math.floor(ajout / 2); duree += ajout; i++; }
+        if (jouer) {
+          if (demiTon >= 0) {
+            let octave = playOct;
+            if (demiTon > 11) { demiTon -= 12; octave++; }
+            if (demiTon < 0) { demiTon += 12; octave--; }
+            let f = PLAY_FREQ[demiTon];
+            if (octave > 4) f <<= (octave - 4);
+            else if (octave < 4) f = (f + (1 << (4 - octave - 1))) >> (4 - octave);
+            if (f < 31) f = 31;
+            env.son(f, Math.floor(duree * 7 / 8));
+          }
+          else env.sonStop();
+          playFin = env.millis() + duree;
+        }
+        return i;
+      }
+      return i;
+    }
+
+    function musique() {
+      if (playT === null || env.millis() - playFin < 0) return;
+      if (playI >= playT.length || playT[playI] === '"') { playT = null; env.sonStop(); return; }
+      playI = playPas(playT, playI, true);
+    }
+
+    function musiqueStop() { playT = null; env.sonStop(); }
+
+    function* musiqueAttendre() {
+      while (playT !== null && err === 0) {
+        checkBreak();
+        if (err) break;
+        yield { t: 'temps', fin: playFin };
+      }
+      if (err === E_BREAK) musiqueStop();
+    }
+
+    function playCorrect(t, i) {
+      const o = playOct, l = playLong, tp = playTempo;
+      while (i >= 0 && i < t.length && t[i] !== '"') i = playPas(t, i, false);
+      playOct = o; playLong = l; playTempo = tp;
+      return i >= 0;
+    }
+
+    function* play() {
+      skip();
+      if (P >= T.length || T[P] === ':' || atElse()) { musiqueStop(); return; }
+      let texte = null, debut = 0;
+      if (T[P] === '"') {
+        let fin = P + 1;
+        while (fin < T.length && T[fin] !== '"') fin++;
+        const d = P;
+        P = T[fin] === '"' ? fin + 1 : fin;
+        skip();
+        if (cur >= 0 && (P >= T.length || T[P] === ':' || atElse())) { texte = T; debut = d + 1; }
+        else P = d;
+      }
+      if (texte === null) {
+        const s = strExpr();
+        if (err) return;
+        if (!playCorrect(s, 0)) { err = E_VALEUR; return; }
+        yield* musiqueAttendre();
+        if (err) return;
+        texte = s;
+        debut = 0;
+      }
+      else {
+        if (!playCorrect(texte, debut)) { err = E_VALEUR; return; }
+        yield* musiqueAttendre();
+        if (err) return;
+      }
+      playT = texte;
+      playI = debut;
+      playFin = env.millis();
+      musique();
+    }
+
     function checkBreak() {
+      musique();
       if (arretExterne) { err = E_BREAK; return; }
       const k = env.cle();
       if (k === 0) return;
@@ -892,45 +1068,71 @@
 
     function graphic(p) {
       // Le caractère semi-graphique Videotex qui a ces 6 points
-      wb(0x20 | ((p & 32) ? 1 : 0) | ((p & 16) ? 2 : 0) | ((p & 8) ? 4 : 0) |
-        ((p & 4) ? 8 : 0) | ((p & 2) ? 16 : 0) | ((p & 1) ? 64 : 0));
+      // (le pavé plein est envoyé en 0x5F, comme le fait Minitel1B_Hard)
+      const b = 0x20 | ((p & 32) ? 1 : 0) | ((p & 16) ? 2 : 0) | ((p & 8) ? 4 : 0) |
+        ((p & 4) ? 8 : 0) | ((p & 2) ? 16 : 0) | ((p & 1) ? 64 : 0);
+      wb(b === 0x7F ? 0x5F : b);
     }
 
-    function gfxCell(cx, cy) {
-      if (cx < 0 || cx > 39 || cy < 0 || cy > 23) return;
-      if (cx === 39 && cy === 23) return;
-      moveXY(cx + 1, cy + 1);
-      wb(0x0E);
-      graphic(gfxPoints(cx, cy));
-      wb(0x0F);
-      restoreAttr();
-      col = (cx + 1) % 40;
-    }
+    // Les cases semi-graphiques posées par reBASIC (chacune délimite une zone de fond) et le
+    // dessin différé (FLIP) : voir Basic.ino
+    const gfxMos = new Uint8Array(960);
+    let flip = false;
+    const FLIP_MAX = esp ? 960 : 64;
+    let flipListe = [];  // [case, points à l'écran]
 
-    function gfxMark(cases, x, y, allume) {
-      if (x < 0 || x >= GW || y < 0 || y >= GH) return;
-      gfxSet(x, y, allume);
-      cases[Math.floor(y / 3) * 40 + Math.floor(x / 2)] = 1;
-    }
-
-    function gfxFlush(cases) {
+    function gfxSend(cases) {
       let graphique = false;
       let suivante = -1;
       for (let k = 0; k < 960; k++) {
         if (!cases[k]) continue;
         const cx = k % 40, cy = Math.floor(k / 40);
-        if (cx === 39 && cy === 23) continue;
+        if (k === 959) continue;
         if (k !== suivante) moveXY(cx + 1, cy + 1);
         if (!graphique) { wb(0x0E); graphique = true; }
         graphic(gfxPoints(cx, cy));
+        gfxMos[k] = 1;
         suivante = (cx === 39) ? -1 : k + 1;
         col = (cx + 1) % 40;
+        if (paper !== 0 && cx < 39 && k + 1 !== 959 && !cases[k + 1] && !gfxMos[k + 1]) {
+          esc(FOND_NOIR);
+          graphic(0);
+          esc(FOND_NOIR + paper);
+          gfxMos[k + 1] = 1;
+          suivante = (cx + 1 === 39) ? -1 : k + 2;
+          col = (cx + 2) % 40;
+        }
       }
       if (graphique) {
         wb(0x0F);
         restoreAttr();
       }
     }
+
+    function flipSend() {
+      const cases = new Uint8Array(960);
+      for (const [k, p] of flipListe) if (gfxPoints(k % 40, Math.floor(k / 40)) !== p) cases[k] = 1;
+      flipListe = [];
+      gfxSend(cases);
+    }
+
+    function flipNote(k) {
+      for (const [j] of flipListe) if (j === k) return;
+      if (flipListe.length >= FLIP_MAX) flipSend();
+      flipListe.push([k, gfxPoints(k % 40, Math.floor(k / 40))]);
+    }
+
+    function gfxMark(cases, x, y, allume) {
+      if (x < 0 || x >= GW || y < 0 || y >= GH) return;
+      const k = Math.floor(y / 3) * 40 + Math.floor(x / 2);
+      if (!cases[k]) {
+        if (flip) flipNote(k);
+        cases[k] = 1;
+      }
+      gfxSet(x, y, allume);
+    }
+
+    function gfxFlush(cases) { if (!flip) gfxSend(cases); }
 
     function gfxBox(x1, y1, x2, y2, allume, plein) {
       const cases = new Uint8Array(960);
@@ -994,7 +1196,7 @@
       gfxFlush(cases);
     }
 
-    function gfxClear() { gfx.fill(0); }
+    function gfxClear() { gfx.fill(0); gfxMos.fill(0); flipListe = []; }
 
     //////////////////////////////////////////////////////////////////////////////
     // Analyse du texte
@@ -1111,7 +1313,13 @@
       let q = P;
       if (T[q] === '"') return true;
       if (!isL(cc(q))) return false;
-      while (isL(cc(q))) q++;
+      const id = motCle(T, q);
+      if (id >= 0) {  // Fonction de chaîne (CHR$...), ou mot-clé suivi d'un $ (comme un token dans Basic.ino)
+        const nom = TOK_NOMS[id];
+        return nom.endsWith('$') || T[q + nom.length] === '$';
+      }
+      q++;
+      if (isL(cc(q)) || isD(cc(q))) q++;
       return T[q] === '$';
     }
 
@@ -1155,8 +1363,7 @@
     }
 
     function clearArrays() {
-      arrBase.fill(-1);
-      arrDim.fill(0);
+      objets = new Map();
       arrUsed = 0;
     }
 
@@ -1167,28 +1374,66 @@
       resetStacks();
     }
 
-    function dim(idx, n) {
-      // Les tableaux sont rangés à la fin de la mémoire, le dernier réservé le plus bas
-      if (arrBase[idx] >= 0 || n < 0) { err = E_VALEUR; return; }
-      if (n + 1 > Math.floor(libre() / 4)) { err = E_MEMOIRE; return; }
-      arrUsed += n + 1;
-      arrBase[idx] = MEM_FLOATS - arrUsed;
-      arrDim[idx] = n;
-      for (let i = 0; i <= n; i++) arr[arrBase[idx] + i] = 0;
+    const V_NUM = 1, V_STR = 2, V_TNUM = 3, V_TSTR = 4;
+    const objTaille = (genre, n) => ((genre === V_STR || genre === V_TSTR) ? n * STR_FLOATS : n);
+
+    function objNew(genre, nom, n) {
+      const taille = 2 + objTaille(genre, n);
+      if (n < 1 || taille > Math.floor(libre() / 4)) { err = E_MEMOIRE; return null; }
+      arrUsed += taille;
+      const o = { n, v: (genre === V_STR || genre === V_TSTR) ? new Array(n).fill('') : new Float32Array(n) };
+      objets.set(genre + ':' + nom, o);
+      return o;
     }
 
-    function arrRef(idx) {
-      // Lit "(indice)" et renvoie la position de l'élément dans arr (-1 en cas d'erreur)
-      expect('(');
-      const i = Math.trunc(expr());
-      expect(')');
-      if (err) return -1;
-      if (arrBase[idx] < 0) {
-        dim(idx, 10);
-        if (err) return -1;
+    function dim(genre, nom, n) {
+      if (objets.has(genre + ':' + nom) || n < 0) { err = E_VALEUR; return; }
+      objNew(genre, nom, n + 1);
+    }
+
+    // Une lettre qui commence un nom de variable (et non un mot-clé, qui serait un token)
+    const estVar = (p) => isL(cc(p)) && motCle(T, p) < 0;
+
+    function nom_() {
+      // Un nom de variable : { nom, chaine } (null : erreur de syntaxe)
+      skip();
+      if (!estVar(P)) { err = E_SYNTAXE; return null; }
+      let nom = T[P++];
+      if (isL(cc(P)) || isD(cc(P))) nom += T[P++];
+      if (isL(cc(P)) || isD(cc(P))) { err = E_SYNTAXE; return null; }
+      const chaine = T[P] === '$';
+      if (chaine) P++;
+      return { nom, chaine };
+    }
+
+    function ref(ecrire) {
+      // Une variable ou un élément de tableau : { chaine, cle, get(), set(v) } (null : erreur)
+      const n = nom_();
+      if (!n) return null;
+      const { nom, chaine } = n;
+      if (T[P] === '(') {
+        if (!enter()) return null;
+        P++;
+        const i = Math.trunc(expr());
+        expect(')');
+        depth--;
+        if (err) return null;
+        const genre = chaine ? V_TSTR : V_TNUM;
+        let o = objets.get(genre + ':' + nom);
+        if (!o) { o = objNew(genre, nom, 11); if (!o) return null; }
+        if (i < 0 || i >= o.n) { err = E_INDICE; return null; }
+        return { chaine, cle: null, get: () => o.v[i], set: (v) => { o.v[i] = v; } };
       }
-      if (i < 0 || i > arrDim[idx]) { err = E_INDICE; return -1; }
-      return arrBase[idx] + i;
+      if (nom.length === 1) {
+        const idx = nom.charCodeAt(0) - 65;
+        if (chaine) return { chaine, cle: nom + '$', get: () => strs[idx], set: (v) => { strs[idx] = v; } };
+        return { chaine, cle: nom, get: () => vars[idx], set: (v) => { vars[idx] = v; } };
+      }
+      const genre = chaine ? V_STR : V_NUM;
+      let o = objets.get(genre + ':' + nom);
+      if (!o && ecrire) { o = objNew(genre, nom, 1); if (!o) return null; }
+      if (!o) return { chaine, cle: nom, get: () => (chaine ? '' : 0), set() { } };
+      return { chaine, cle: nom + (chaine ? '$' : ''), get: () => o.v[0], set: (v) => { o.v[0] = v; } };
     }
 
     //////////////////////////////////////////////////////////////////////////////
@@ -1278,10 +1523,11 @@
         if (T[P] === '"') P++;
         return s;
       }
-      if (isL(cc(P)) && T[P + 1] === '$') {
-        const s = strs[cc(P) - 65];
-        P += 2;
-        return s;
+      if (estVar(P)) {
+        const r = ref(false);
+        if (!r) return '';
+        if (!r.chaine) { err = E_TYPE; return ''; }
+        return r.get();
       }
       if (kw('INKEY$')) {
         if (key === 0) key = env.cle();
@@ -1469,7 +1715,7 @@
         return v;
       }
 
-      if (isL(c) && isL(cc(P + 1))) {
+      if (isL(c) && motCle(T, P) >= 0) {  // Un mot-clé (un token dans Basic.ino) : une fonction
         if (!enter()) return 0;
         let v = 0;
         if (kw('LEN') || kw('VAL') || kw('ASC')) v = strFunc(T[P - 1]);
@@ -1527,15 +1773,10 @@
       }
 
       if (isL(c)) {
-        const idx = c - 65;
-        P++;
-        if (T[P] === '(') {
-          if (!enter()) return 0;
-          const i = arrRef(idx);
-          depth--;
-          return i >= 0 ? arr[i] : 0;
-        }
-        return vars[idx];
+        const r = ref(false);
+        if (!r) return 0;
+        if (r.chaine) { err = E_TYPE; return 0; }
+        return r.get();
       }
 
       err = E_SYNTAXE;
@@ -1765,6 +2006,98 @@
       stop = false;
     }
 
+    const CAPTURE = 'SAVEVDT.TMP';
+    function captureDebut() {
+      capture = [0x1B, 0x3A, 0x69, 0x43];  // PRO2 : mode rouleau
+      env.sd.ecrire(CAPTURE, Uint8Array.from(capture));
+    }
+    function captureFin() {
+      if (capture) env.sd.ecrire(CAPTURE, Uint8Array.from(capture));
+      capture = null;
+    }
+    function saveVdt() {
+      const nom = fileName('.VDT', false);
+      if (!nom) return;
+      const enCours = capture !== null;
+      captureFin();
+      if (!env.sd.existe(CAPTURE)) { err = E_INTROUV; return; }
+      const octets = env.sd.lire(CAPTURE);
+      if (!env.sd.ecrire(nom, Uint8Array.from(octets))) err = E_FICHIER;
+      if (enCours) capture = Array.from(octets);
+    }
+
+    // BIG : du texte en grand, avec des points (voir Basic.ino)
+    const BIG_CARS = " !'-.:?0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*/,+=()<>%";
+    const BIG_POLICE = [
+      [0x00,0x00,0x00,0x00,0x00,0x00,0x00], [0x04,0x04,0x04,0x04,0x04,0x00,0x04],
+      [0x04,0x04,0x08,0x00,0x00,0x00,0x00], [0x00,0x00,0x00,0x1F,0x00,0x00,0x00],
+      [0x00,0x00,0x00,0x00,0x00,0x0C,0x0C], [0x00,0x0C,0x0C,0x00,0x0C,0x0C,0x00],
+      [0x0E,0x11,0x01,0x02,0x04,0x00,0x04],
+      [0x0E,0x11,0x13,0x15,0x19,0x11,0x0E], [0x04,0x0C,0x04,0x04,0x04,0x04,0x0E],
+      [0x0E,0x11,0x01,0x02,0x04,0x08,0x1F], [0x0E,0x11,0x01,0x06,0x01,0x11,0x0E],
+      [0x02,0x06,0x0A,0x12,0x1F,0x02,0x02], [0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E],
+      [0x06,0x08,0x10,0x1E,0x11,0x11,0x0E], [0x1F,0x01,0x02,0x04,0x08,0x08,0x08],
+      [0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E], [0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C],
+      [0x0E,0x11,0x11,0x11,0x1F,0x11,0x11], [0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E],
+      [0x0E,0x11,0x10,0x10,0x10,0x11,0x0E], [0x1C,0x12,0x11,0x11,0x11,0x12,0x1C],
+      [0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F], [0x1F,0x10,0x10,0x1E,0x10,0x10,0x10],
+      [0x0E,0x11,0x10,0x17,0x11,0x11,0x0F], [0x11,0x11,0x11,0x1F,0x11,0x11,0x11],
+      [0x0E,0x04,0x04,0x04,0x04,0x04,0x0E], [0x07,0x02,0x02,0x02,0x02,0x12,0x0C],
+      [0x11,0x12,0x14,0x18,0x14,0x12,0x11], [0x10,0x10,0x10,0x10,0x10,0x10,0x1F],
+      [0x11,0x1B,0x15,0x15,0x11,0x11,0x11], [0x11,0x11,0x19,0x15,0x13,0x11,0x11],
+      [0x0E,0x11,0x11,0x11,0x11,0x11,0x0E], [0x1E,0x11,0x11,0x1E,0x10,0x10,0x10],
+      [0x0E,0x11,0x11,0x11,0x15,0x12,0x0D], [0x1E,0x11,0x11,0x1E,0x14,0x12,0x11],
+      [0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E], [0x1F,0x04,0x04,0x04,0x04,0x04,0x04],
+      [0x11,0x11,0x11,0x11,0x11,0x11,0x0E], [0x11,0x11,0x11,0x11,0x11,0x0A,0x04],
+      [0x11,0x11,0x11,0x15,0x15,0x15,0x0A], [0x11,0x11,0x0A,0x04,0x0A,0x11,0x11],
+      [0x11,0x11,0x11,0x0A,0x04,0x04,0x04], [0x1F,0x01,0x02,0x04,0x08,0x10,0x1F],
+      [0x00,0x04,0x15,0x0E,0x15,0x04,0x00], [0x01,0x01,0x02,0x04,0x08,0x10,0x10],
+      [0x00,0x00,0x00,0x00,0x0C,0x04,0x08], [0x00,0x04,0x04,0x1F,0x04,0x04,0x00],
+      [0x00,0x00,0x1F,0x00,0x1F,0x00,0x00], [0x02,0x04,0x08,0x08,0x08,0x04,0x02],
+      [0x08,0x04,0x02,0x02,0x02,0x04,0x08], [0x02,0x04,0x08,0x10,0x08,0x04,0x02],
+      [0x08,0x04,0x02,0x01,0x02,0x04,0x08], [0x18,0x19,0x02,0x04,0x08,0x13,0x03]
+    ];
+    function bigIndex(ch) {
+      let u = ch.codePointAt(0);
+      if (u > 0x7FF) u = 63;
+      if (u >= 97 && u <= 122) u -= 32;
+      else if (u >= 0xC0 && u <= 0xFF) {
+        const b = u & 0xDF;
+        if (b >= 0xC0 && b <= 0xC5) u = 65;
+        else if (b === 0xC7) u = 67;
+        else if (b >= 0xC8 && b <= 0xCB) u = 69;
+        else if (b >= 0xCC && b <= 0xCF) u = 73;
+        else if (b >= 0xD2 && b <= 0xD6) u = 79;
+        else if (b >= 0xD9 && b <= 0xDC) u = 85;
+        else u = 63;
+      }
+      const i = BIG_CARS.indexOf(String.fromCharCode(u));
+      return i < 0 || u === 0 ? 6 : i;
+    }
+    function big(texte, x, y, taille, allume) {
+      const cases = new Uint8Array(960);
+      const cars = Array.from(texte);
+      let gx = x;
+      for (let k = 0; k < cars.length; k++) {
+        const g = bigIndex(cars[k]);
+        const largeur = k < cars.length - 1 ? 6 : 5;
+        for (let ry = 0; ry < 7; ry++) {
+          const rangee = BIG_POLICE[g][ry];
+          for (let rx = 0; rx < largeur; rx++) {
+            const point = allume && rx < 5 && ((rangee >> (4 - rx)) & 1) === 1;
+            for (let dy = 0; dy < taille; dy++) {
+              const py = y + ry * taille + dy;
+              if (py < 0 || py >= GH) continue;
+              for (let dx = 0; dx < taille; dx++) gfxMark(cases, gx + rx * taille + dx, py, point);
+            }
+          }
+        }
+        gx += 6 * taille;
+        if (gx >= GW) break;
+      }
+      gfxFlush(cases);
+    }
+
     function* vdt() {
       // VDT "NOM" : envoie au Minitel la page Vidéotex NOM.VDT, comme basVdt
       const nom = fileName('.VDT', false);
@@ -1906,24 +2239,15 @@
     }
 
     function cible() {
-      // Lit une variable à remplir : { genre: 'n' | 's' | 't', idx | i }
-      skip();
-      if (!isL(cc(P)) || isL(cc(P + 1))) { err = E_SYNTAXE; return null; }
-      const idx = cc(P) - 65;
-      P++;
-      if (T[P] === '$') { P++; return { genre: 's', idx }; }
-      if (T[P] === '(') {
-        const i = arrRef(idx);
-        if (i < 0) return null;
-        return { genre: 't', i };
-      }
-      return { genre: 'n', idx };
+      // Lit une variable à remplir (null en cas d'erreur)
+      const r = ref(true);
+      if (!r) return null;
+      r.genre = r.chaine ? 's' : 'n';
+      return r;
     }
 
     function ranger(c, v) {
-      if (c.genre === 's') strs[c.idx] = v;
-      else if (c.genre === 't') arr[c.i] = v;
-      else vars[c.idx] = v;
+      c.set(c.chaine ? u8tronquer(v, STR_MAX) : v);
     }
 
     function fileInput(ligne) {
@@ -2111,10 +2435,13 @@
     }
 
     function for_() {
-      skip();
-      if (!isL(cc(P)) || isL(cc(P + 1))) { err = E_SYNTAXE; return; }
-      const idx = cc(P) - 65;
-      P++;
+      const debutNom = P;
+      const n = nom_();
+      if (!n) return;
+      if (n.chaine || T[P] === '(') { err = E_SYNTAXE; return; }
+      P = debutNom;
+      const r = ref(true);
+      if (!r) return;
       expect('=');
       const debut = expr();
       if (err) return;
@@ -2124,52 +2451,41 @@
       if (err === 0 && kw('STEP')) pas = expr();
       if (err) return;
       for (let i = 0; i < fors.length; i++) {
-        if (fors[i].v === idx) { fors.length = i; break; }
+        if (fors[i].v.cle === r.cle) { fors.length = i; break; }
       }
       if (fors.length >= FOR_MAX) { err = E_IMBRIC; return; }
-      vars[idx] = debut;
-      fors.push({ v: idx, lim: limite, pas: pas, l: cur, p: P });
+      r.set(debut);
+      fors.push({ v: r, lim: limite, pas: pas, l: cur, p: P });
     }
 
     function next() {
       skip();
-      if (isL(cc(P)) && !isL(cc(P + 1))) {
-        const idx = cc(P) - 65;
-        P++;
-        while (fors.length > 0 && fors[fors.length - 1].v !== idx) fors.pop();
+      if (estVar(P)) {
+        const r = ref(false);
+        if (!r) return;
+        if (r.chaine) { err = E_SYNTAXE; return; }
+        while (fors.length > 0 && fors[fors.length - 1].v.cle !== r.cle) fors.pop();
       }
       if (fors.length === 0) { err = E_NEXT; return; }
       const b = fors[fors.length - 1];
-      const v = F(vars[b.v] + b.pas);
-      vars[b.v] = v;
+      const v = F(b.v.get() + b.pas);
+      b.v.set(v);
       if ((b.pas >= 0 && v <= b.lim) || (b.pas < 0 && v >= b.lim)) aller(b.l, b.p);
       else fors.pop();
     }
 
     function let_() {
-      skip();
-      if (!isL(cc(P)) || isL(cc(P + 1))) { err = E_SYNTAXE; return; }
-      const idx = cc(P) - 65;
-      P++;
-      if (T[P] === '$') {
-        P++;
-        expect('=');
-        if (err) return;
+      const r = ref(true);
+      if (!r) return;
+      expect('=');
+      if (err) return;
+      if (r.chaine) {
         const s = strExpr();
-        if (err === 0) strs[idx] = s;
-      }
-      else if (T[P] === '(') {
-        const i = arrRef(idx);
-        expect('=');
-        if (err) return;
-        const v = expr();
-        if (err === 0) arr[i] = v;
+        if (err === 0) r.set(s);
       }
       else {
-        expect('=');
-        if (err) return;
         const v = expr();
-        if (err === 0) vars[idx] = v;
+        if (err === 0) r.set(v);
       }
     }
 
@@ -2487,18 +2803,18 @@
       else if (kw('DIM')) {
         let encore = true;
         while (encore && err === 0) {
-          skip();
-          if (!isL(cc(P)) || T[P + 1] !== '(') { err = E_SYNTAXE; return; }
-          const idx = cc(P) - 65;
-          P++;
+          const nom = nom_();
+          if (!nom) return;
+          if (T[P] !== '(') { err = E_SYNTAXE; return; }
           const n = Math.trunc(arg());
-          if (err === 0) dim(idx, n);
+          if (err === 0) dim(nom.chaine ? V_TSTR : V_TNUM, nom.nom, n);
           skip();
           encore = (T[P] === ',');
           if (encore) P++;
         }
       }
       else if (kw('CLS')) {
+        if (capture) captureDebut();
         newScreen();
         col = 0;
         gfxClear();
@@ -2529,14 +2845,41 @@
         if (err) return;
         if (genre === 'C' && c[2] < 0) { err = E_VALEUR; return; }
         if (genre === 'P') {
-          if (c[0] >= 0 && c[0] < GW && c[1] >= 0 && c[1] < GH) {
-            gfxSet(c[0], c[1], allume);
-            gfxCell(Math.floor(c[0] / 2), Math.floor(c[1] / 3));
-          }
+          const cases = new Uint8Array(960);
+          gfxMark(cases, c[0], c[1], allume);
+          gfxFlush(cases);
         }
         else if (genre === 'L') gfxLine(c[0], c[1], c[2], c[3], allume);
         else if (genre === 'B') gfxBox(c[0], c[1], c[2], c[3], allume, plein);
         else gfxCircle(c[0], c[1], c[2], allume, plein);
+      }
+      else if (kw('PLAY')) yield* play();
+      else if (kw('SAVEVDT')) saveVdt();
+      else if (kw('BIG')) {
+        const texte = strExpr();
+        const c = [0, 0, 1, 1];
+        let n = 0;
+        while (err === 0 && n < 4) {
+          skip();
+          if (T[P] !== ',') break;
+          P++;
+          const v = expr();
+          if (v < -1000 || v > 1000) { if (err === 0) err = E_VALEUR; }
+          c[n++] = Math.trunc(v);
+        }
+        if (err) return;
+        if (n < 2 || c[2] < 1 || c[2] > 8) { err = n < 2 ? E_SYNTAXE : E_VALEUR; return; }
+        big(texte, c[0], c[1], c[2], c[3] !== 0);
+      }
+      else if (kw('FLIP')) {
+        let differe = true;
+        skip();
+        if (P < T.length && T[P] !== ':' && !atElse()) {
+          differe = expr() !== 0;
+          if (err) return;
+        }
+        flipSend();
+        flip = differe;
       }
       else if (kw('LOCATE')) {
         const x = Math.trunc(expr());
@@ -2593,6 +2936,7 @@
         const duree = Math.trunc(expr());
         if (err) return;
         if (frequence < 31 || frequence > 20000 || duree < 0 || duree > 60000) { err = E_VALEUR; return; }
+        musiqueStop();
         env.son(frequence, duree);
         yield* wait(duree);
         env.sonStop();
@@ -2606,6 +2950,14 @@
       else if (kw('RUN')) {
         closeAll();
         clearVars();
+        musiqueStop();
+        playOct = 4; playLong = 4; playTempo = 120;
+        if (prog.length > 0 && prog.some((l) => contientMot(l.t, 'SAVEVDT'))) {
+          captureDebut();
+          newScreen();
+          col = 0;
+          gfxClear();
+        }
         timer0 = env.millis();
         if (prog.length === 0) { stop = true; return; }
         aller(0, 0);
@@ -2709,6 +3061,16 @@
         key = 0;
         gs = []; fors = []; whs = [];
         yield* run();
+        if (err === 0) yield* musiqueAttendre();
+        else musiqueStop();
+        captureFin();
+        if (flip) {
+          const erreur = err;
+          err = 0;
+          flipSend();
+          flip = false;
+          err = erreur;
+        }
         if (err && !(err === E_BREAK && arretSilencieux)) printError();
         arretExterne = false;
         arretSilencieux = false;

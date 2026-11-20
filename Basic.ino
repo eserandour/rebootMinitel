@@ -38,10 +38,13 @@
     GOTO n     GOSUB n     RETURN          ON x GOTO n1,n2...   ON x GOSUB n1,n2...
     FOR v = a TO b [STEP c]     NEXT [v]   WHILE condition ... WEND
     DATA 12,"TEXTE",-3.5   READ variable[,variable...]   RESTORE [n]
-    DIM A(n)   REM         END   STOP
+    DIM A(n)[,B$(m)...]    REM         END   STOP
     CLS        LOCATE colonne,rangée       BEEP   SOUND fréquence,durée(ms)   PAUSE durée(ms)
+    PLAY "mélodie" : joue une mélodie en tâche de fond (voir basPlay) ; PLAY seul l'arrête
     VDT "NOM"  : envoie au Minitel la page Vidéotex NOM.VDT de la carte SD
+    SAVEVDT "NOM" : enregistre l'écran dans la page NOM.VDT (voir basSaveVdt)
     PLOT x,y[,c]   LINE x1,y1,x2,y2[,c]    BOX x1,y1,x2,y2[,c[,p]]   CIRCLE x,y,r[,c[,p]]
+    BIG "TEXTE",x,y[,taille[,c]]           FLIP [n]
     (dessin, voir plus bas)
 
   Attributs d'affichage (0 à 7 : noir, rouge, vert, jaune, bleu, magenta, cyan, blanc) :
@@ -49,7 +52,8 @@
     PAPER n      : couleur de fond. C'est un attribut de zone du Minitel : en texte, il
                    prend effet au premier espace écrit ensuite et dure jusqu'à la fin de la
                    rangée (ou jusqu'au prochain espace après un autre PAPER). En dessin,
-                   chaque case semi-graphique prend aussitôt le fond en cours.
+                   chaque case semi-graphique prend aussitôt le fond en cours (et reBASIC
+                   pose un délimiteur noir après elle : voir basGfxSend).
     INVERSE n    : vidéo inverse (1) ou normale (0)
     FLASH n      : clignotement (1) ou fixe (0)
     UNDERLINE n  : soulignement (1) ou non (0). Attribut de zone comme PAPER : il commence
@@ -78,10 +82,12 @@
     DREAD(broche) : 0 ou 1             AREAD(entrée) : 0 à 1023 (entrée analogique 0 à 15
                                        sur le Mega, numéro de broche sur l'ESP32)
 
-  Variables :
-    A à Z      : nombres (environ 7 chiffres significatifs)
-    A$ à Z$    : chaînes de caractères (BAS_STR_MAX caractères au maximum)
-    A(n) à Z(n): tableaux de nombres, indices de 0 à n (10 par défaut sans DIM)
+  Variables (voir basObj) :
+    A à Z, AB, A1...      : nombres (environ 7 chiffres significatifs) ; un nom a une
+                            lettre, puis éventuellement une lettre ou un chiffre
+    A$, AB$...            : chaînes de caractères (BAS_STR_MAX caractères au maximum)
+    A(n), AB(n), A$(n)... : tableaux de nombres et de chaînes, indices de 0 à n (10 par
+                            défaut sans DIM)
 
   Opérateurs :
     + - * / ^ (touche flèche haut) MOD     = <> < > <= >=     AND OR NOT
@@ -113,6 +119,10 @@
     un cercle de rayon r (mesuré horizontalement : les points du Minitel sont plus larges
     que hauts, le cercle s'étend donc sur r x 1,25 points verticalement pour paraître rond).
     Avec c = 0, ils éteignent ; avec p = 1, BOX et CIRCLE sont pleins.
+    BIG écrit un texte en grandes lettres de 5 x 7 points (chaque point agrandi en un carré
+    de taille x taille points) ; il remplace ce qu'il y a dessous, ou l'efface si c = 0.
+    FLIP passe en dessin différé : les instructions de dessin ne travaillent plus qu'en
+    mémoire, et chaque FLIP envoie les cases qui ont changé (FLIP 0 : dessin immédiat).
     La couleur est celle fixée par COLOR, le fond celui fixé par PAPER. CLS efface le dessin.
     Les points sont gardés en mémoire pour pouvoir en allumer plusieurs dans une même case.
     Cette mémoire ne suit pas le défilement de l'écran : mieux vaut dessiner après un CLS
@@ -194,16 +204,16 @@ unsigned int basProgLen = 0;
 // Les variables
 float basVar[26];                    // A à Z
 char basStr[26][BAS_STR_MAX + 1];    // A$ à Z$
-int basArrBase[26];                  // Position du tableau dans basMem (-1 : non défini)
-int basArrDim[26];                   // Dernier indice du tableau
-int basArrUsed = 0;                  // Eléments de tableaux réservés, à la fin de basMem
+// Les tableaux (A(n), A$(n)) et les variables de deux caractères (AB, A1$...) sont rangés à
+// la fin de basMem (voir basObj) : basArrUsed nombres de 4 octets y sont occupés
+int basArrUsed = 0;
 boolean basChaine = false;           // CHAIN en cours : les tableaux doivent être gardés
 
 // Les piles
 byte* basGsLine[BAS_GOSUB_MAX];      // GOSUB : ligne de retour
 char* basGsPos[BAS_GOSUB_MAX];       // GOSUB : position de retour dans la ligne
 byte basGsTop = 0;
-byte basForVar[BAS_FOR_MAX];         // FOR : variable
+float* basForVar[BAS_FOR_MAX];       // FOR : variable
 float basForLimit[BAS_FOR_MAX];      // FOR : valeur finale
 float basForStep[BAS_FOR_MAX];       // FOR : pas
 byte* basForLine[BAS_FOR_MAX];       // FOR : ligne de la boucle
@@ -274,13 +284,82 @@ void basAvance()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
+/*
+  Tout ce que reBASIC envoie au Minitel passe par basOut : les octets sont ceux qu'enverrait
+  Minitel1B_Hard (mêmes séquences), et SAVEVDT peut les enregistrer au passage (voir
+  basCaptureDebut).
+*/
+File basCapture;                     // SAVEVDT : ce que le programme affiche, depuis le dernier CLS
+boolean basCaptureOn = false;
+
+void basOut(byte b)
+{
+  minitel.writeByte(b);
+  if (basCaptureOn) basCapture.write(b);
+}
+
+void basOutP(int n)
+{
+  // Un nombre de 0 à 99 en chiffres, dans une séquence CSI (comme Minitel1B_Hard)
+  if (n > 9) basOut('0' + n / 10);
+  basOut('0' + n % 10);
+}
+
+void basCsi(int n, byte fin)
+{
+  basOut(0x1B);
+  basOut(0x5B);
+  if (n >= 0) basOutP(n);
+  basOut(fin);
+}
+
+void basMoveXY(int x, int y)
+{
+  // Comme minitel.moveCursorXY : CSI y ; x H
+  basOut(0x1B);
+  basOut(0x5B);
+  basOutP(y);
+  basOut(0x3B);
+  basOutP(x);
+  basOut(0x48);
+}
+
+void basMove(int n, byte simple, byte fin)
+{
+  // Comme minitel.moveCursorUp, Right et Left : un code simple pour 1, CSI n pour plus
+  if (n == 1) basOut(simple);
+  else if (n > 1) basCsi(n, fin);
+}
+
+void basAttributs(byte attribut)
+{
+  // Comme minitel.attributs : la double hauteur descend le curseur d'une rangée
+  basOut(0x1B);
+  basOut(attribut);
+  if (attribut == DOUBLE_HAUTEUR || attribut == DOUBLE_GRANDEUR) basOut(0x0A);
+}
+
+void basGraphic(byte points)
+{
+  // Un caractère semi-graphique (points : bit 5 en haut à gauche ... bit 0 en bas à droite)
+  byte b = 0x20;
+  if (points & 0b100000) b += 1;
+  if (points & 0b010000) b += 2;
+  if (points & 0b001000) b += 4;
+  if (points & 0b000100) b += 8;
+  if (points & 0b000010) b += 16;
+  if (points & 0b000001) b += 64;
+  if (b == 0x7F) b = 0x5F;
+  basOut(b);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
 
 void basEsc(byte attribut)
 {
-  // Envoie un attribut au Minitel sans passer par minitel.attributs(), qui descend le
-  // curseur d'une rangée pour la double hauteur
-  minitel.writeByte(0x1B);
-  minitel.writeByte(attribut);
+  // Envoie un attribut au Minitel sans descendre le curseur pour la double hauteur
+  basOut(0x1B);
+  basOut(attribut);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -301,12 +380,12 @@ void basRestoreAttr()
 void basResetAttr()
 {
   // Revient à l'affichage normal : blanc sur fond noir, sans effet, taille normale
-  minitel.attributs(CARACTERE_BLANC);
-  minitel.attributs(FOND_NORMAL);
-  minitel.attributs(FIXE);
-  minitel.attributs(FIN_LIGNAGE);
-  minitel.attributs(GRANDEUR_NORMALE);
-  minitel.attributs(FOND_NOIR);
+  basAttributs(CARACTERE_BLANC);
+  basAttributs(FOND_NORMAL);
+  basAttributs(FIXE);
+  basAttributs(FIN_LIGNAGE);
+  basAttributs(GRANDEUR_NORMALE);
+  basAttributs(FOND_NOIR);
   basInk = 7;
   basPaper = 0;
   basStyle = 0;
@@ -316,12 +395,53 @@ void basResetAttr()
 
 void basNewLine()
 {
-  minitel.writeByte(0x0D);  // Retour en début de rangée
-  minitel.writeByte(0x0A);  // Rangée suivante (l'écran défile en mode rouleau)
+  basOut(0x0D);  // Retour en début de rangée
+  basOut(0x0A);  // Rangée suivante (l'écran défile en mode rouleau)
   basCol = 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
+
+// Les caractères qui ne sont pas en ASCII, et leurs codes Minitel (comme minitel.print)
+typedef struct { uint16_t code; byte octets[3]; } BasAccent;
+const BasAccent basAccents[] PROGMEM = {
+  {0x00A3, {0x19, 0x23, 0x00}}, {0x00A7, {0x19, 0x27, 0x00}}, {0x00B0, {0x19, 0x30, 0x00}}, {0x00B1, {0x19, 0x31, 0x00}},
+  {0x00BC, {0x19, 0x3C, 0x00}}, {0x00BD, {0x19, 0x3D, 0x00}}, {0x00BE, {0x19, 0x3E, 0x00}}, {0x00C0, {0x0F, 0x41, 0x00}},
+  {0x00C2, {0x0F, 0x41, 0x00}}, {0x00C4, {0x0F, 0x41, 0x00}}, {0x00C7, {0x0F, 0x43, 0x00}}, {0x00C8, {0x0F, 0x45, 0x00}},
+  {0x00C9, {0x0F, 0x45, 0x00}}, {0x00CA, {0x0F, 0x45, 0x00}}, {0x00CB, {0x0F, 0x45, 0x00}}, {0x00CE, {0x0F, 0x49, 0x00}},
+  {0x00CF, {0x0F, 0x49, 0x00}}, {0x00D4, {0x0F, 0x4F, 0x00}}, {0x00D6, {0x0F, 0x4F, 0x00}}, {0x00D9, {0x0F, 0x55, 0x00}},
+  {0x00DB, {0x0F, 0x55, 0x00}}, {0x00DC, {0x0F, 0x55, 0x00}}, {0x00E0, {0x19, 0x41, 0x61}}, {0x00E2, {0x19, 0x43, 0x61}},
+  {0x00E4, {0x19, 0x48, 0x61}}, {0x00E7, {0x19, 0x4B, 0x63}}, {0x00E8, {0x19, 0x41, 0x65}}, {0x00E9, {0x19, 0x42, 0x65}},
+  {0x00EA, {0x19, 0x43, 0x65}}, {0x00EB, {0x19, 0x48, 0x65}}, {0x00EE, {0x19, 0x43, 0x69}}, {0x00EF, {0x19, 0x48, 0x69}},
+  {0x00F4, {0x19, 0x43, 0x6F}}, {0x00F6, {0x19, 0x48, 0x6F}}, {0x00F7, {0x19, 0x38, 0x00}}, {0x00F9, {0x19, 0x41, 0x75}},
+  {0x00FB, {0x19, 0x43, 0x75}}, {0x00FC, {0x19, 0x48, 0x75}}, {0x0152, {0x19, 0x6A, 0x00}}, {0x0153, {0x19, 0x7A, 0x00}},
+  {0x03B2, {0x19, 0x7B, 0x00}}, {0x2014, {0x60, 0x00, 0x00}}, {0x2190, {0x19, 0x2C, 0x00}}, {0x2191, {0x5E, 0x00, 0x00}},
+  {0x2192, {0x19, 0x2E, 0x00}}, {0x2193, {0x19, 0x2F, 0x00}}
+};
+
+int basAccentNum(uint16_t u)
+{
+  // La place du caractère u dans basAccents, -1 si le Minitel ne sait pas l'afficher
+  for (byte i = 0; i < sizeof(basAccents) / sizeof(basAccents[0]); i++) {
+    if (pgm_read_word(&basAccents[i].code) == u) return i;
+  }
+  return -1;
+}
+
+void basAccent(const char* seq)
+{
+  // Envoie un caractère UTF-8 (sur 2 ou 3 octets) comme minitel.print : rien s'il est inconnu
+  byte c = (byte) seq[0];
+  uint16_t u;
+  if (c < 0xE0) u = ((uint16_t) (c & 0x1F) << 6) | (seq[1] & 0x3F);
+  else u = ((uint16_t) (c & 0x0F) << 12) | ((uint16_t) (seq[1] & 0x3F) << 6) | (seq[2] & 0x3F);
+  int i = basAccentNum(u);
+  if (i < 0) return;
+  for (byte k = 0; k < 3; k++) {
+    byte b = pgm_read_byte(&basAccents[i].octets[k]);
+    if (b) basOut(b);
+  }
+}
 
 void basPuts(const char* s)
 {
@@ -333,13 +453,13 @@ void basPuts(const char* s)
       s++;
     }
     else if (c < 0x20) {  // Code de contrôle (CHR$) : envoyé tel quel au Minitel
-      minitel.writeByte(c);
+      basOut(c);
       if (c == 0x0D) basCol = 0;
       if (c == 0x08 && basCol > 0) basCol--;
       s++;
     }
     else if (c < 0x80) {
-      minitel.writeByte(c);
+      basOut(c);
       basAvance();
       s++;
     }
@@ -350,10 +470,10 @@ void basPuts(const char* s)
       while ((((byte) *s) & 0xC0) == 0x80 && n < 4) seq[n++] = *s++;
       seq[n] = 0;
       if (c == 0xC2 || c == 0xC3 || c == 0xC5 || c == 0xCE || c == 0xE2) {
-        minitel.print(seq);
+        basAccent(seq);
       }
       else {
-        minitel.writeByte('?');  // Caractère inconnu du Minitel
+        basOut('?');  // Caractère inconnu du Minitel
       }
       basAvance();
     }
@@ -470,9 +590,9 @@ void basShowErrorLine(const char* texte, const char* pos)
     suite = pos + len;
   }
   morceau[len] = 0;
-  minitel.attributs(INVERSION_FOND);
+  basAttributs(INVERSION_FOND);
   basPuts(morceau);
-  minitel.attributs(FOND_NORMAL);
+  basAttributs(FOND_NORMAL);
   if (basIsTok(pos)) {  // La fin du mot-clé
     basDetok(pos, suite, morceau, BAS_TEXT_MAX);
     basPuts(morceau + 1);
@@ -531,7 +651,7 @@ void basPrintError()
     if (basCur != NULL) texte = (const char*) (basCur + 3);
     else if (pos >= basLine && pos < basLine + sizeof(basLine)) texte = basLine;
     if (texte != NULL && pos >= texte && pos <= texte + strlen(texte)) basShowErrorLine(texte, pos);
-    minitel.bip();
+    basOut(0x07);
   }
   basErrLigne = 0;
 }
@@ -541,27 +661,27 @@ void basPrintError()
 void basKeyName(const char* nom)
 {
   // Affiche le nom d'une touche (rangé en mémoire programme) en vidéo inverse
-  minitel.attributs(INVERSION_FOND);
+  basAttributs(INVERSION_FOND);
   basPutsP(nom);
-  minitel.attributs(FOND_NORMAL);
+  basAttributs(FOND_NORMAL);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-#define BAS_HELP_PAGES 4     // Nombre de pages de l'aide
+#define BAS_HELP_PAGES 5     // Nombre de pages de l'aide
 
 void basHelpPage(byte page)
 {
   // Affiche une page de l'aide (de 0 à BAS_HELP_PAGES - 1) sur un écran effacé
-  minitel.newScreen();
+  basOut(0x0C);
   basCol = 0;
-  minitel.attributs(INVERSION_FOND);
+  basAttributs(INVERSION_FOND);
   basPutsP(PSTR(" reBASIC - Aide "));
   basPrintNum(page + 1);
   basPuts("/");
   basPrintNum(BAS_HELP_PAGES);
   basPuts(" ");
-  minitel.attributs(FOND_NORMAL);
+  basAttributs(FOND_NORMAL);
   basNewLine();
   basNewLine();
   if (page == 0) {
@@ -583,7 +703,7 @@ void basHelpPage(byte page)
     basPutsP(PSTR(" FOR v=a TO b [STEP c] ... NEXT [v]\n"));
     basPutsP(PSTR(" WHILE cond ... WEND\n"));
     basPutsP(PSTR(" DATA  READ v[,v...]  RESTORE [n]\n"));
-    basPutsP(PSTR(" DIM A(n)  REM  END  STOP\n"));
+    basPutsP(PSTR(" DIM A(n) A$(n)  REM  END  STOP\n"));
   }
   else if (page == 1) {
     basPutsP(PSTR("Ecran (couleurs 0 à 7) :\n"));
@@ -625,7 +745,7 @@ void basHelpPage(byte page)
     basPutsP(PSTR(" GUIDE 4932  CORRECTION 4935\n"));
     basPutsP(PSTR(" SUITE 4936  autres : code du caractère\n"));
   }
-  else {
+  else if (page == 3) {
     basPutsP(PSTR("Fichiers de données (.TXT) :\n"));
     basPutsP(PSTR(" OPEN \"NOM\" FOR INPUT AS #1\n"));
     basPutsP(PSTR("  (ou OUTPUT, APPEND ; #1 ou #2)\n"));
@@ -652,9 +772,29 @@ void basHelpPage(byte page)
     basKeyName(PSTR("SOMMAIRE"));
     basPutsP(PSTR(" menu\n"));
   }
+  else {
+    basPutsP(PSTR("Variables :\n"));
+    basPutsP(PSTR(" A à Z, AB, A1 (2 caractères au plus)\n"));
+    basPutsP(PSTR(" A$, AB$ : chaînes ; DIM A(n), A$(n)\n"));
+    basNewLine();
+    basPutsP(PSTR("Musique (en tâche de fond) :\n"));
+    basPutsP(PSTR(" PLAY \"T120 O4 L4 C D E8 F8 G2\"\n"));
+    basPutsP(PSTR("  A-G (# + -), R silence, O octave,\n"));
+    basPutsP(PSTR("  L durée, T tempo, < >\n"));
+    basPutsP(PSTR("  PLAY seul arrête la musique\n"));
+    basNewLine();
+    basPutsP(PSTR("Dessin :\n"));
+    basPutsP(PSTR(" FLIP : dessin différé, puis envoie\n"));
+    basPutsP(PSTR("  les cases changées (FLIP 0 : fin)\n"));
+    basPutsP(PSTR(" BIG \"TEXTE\",x,y[,taille[,c]]\n"));
+    basNewLine();
+    basPutsP(PSTR("Ecran :\n"));
+    basPutsP(PSTR(" SAVEVDT \"NOM\" (dans un programme) :\n"));
+    basPutsP(PSTR("  enregistre l'écran en page NOM.VDT\n"));
+  }
   // Le bas de l'écran : les touches de l'aide, selon la page
   // ("RETOUR - SUITE - ENVOI : reBASIC", "RETOUR - ...", "SUITE - ...")
-  minitel.moveCursorXY(1, 24);
+  basMoveXY(1, 24);
   basCol = 0;
   if (page > 0) basKeyName(PSTR("RETOUR"));
   if (page > 0 && page < BAS_HELP_PAGES - 1) basPuts(" - ");
@@ -677,15 +817,15 @@ void basHelp()
     if (k == 0) continue;
     if (k == SUITE) {
       if (page < BAS_HELP_PAGES - 1) basHelpPage(++page);
-      else minitel.bip();
+      else basOut(0x07);
     }
     else if (k == RETOUR) {
       if (page > 0) basHelpPage(--page);
-      else minitel.bip();
+      else basOut(0x07);
     }
     else if (k == ENVOI || k == 0x0D) break;
   }
-  minitel.newScreen();  // Le dessin et le texte précédents ont disparu
+  basOut(0x0C);  // Le dessin et le texte précédents ont disparu
   basCol = 0;
   basGfxClear();
 }
@@ -705,8 +845,21 @@ void basKeyToStr(unsigned long k, char* s)
     s[1] = 0;
   }
   else if (k >= 0x80 && k <= 0xFFFF) {
-    String u = minitel.getString(k);
-    if (u.length() > 0 && u.length() <= 4) strcpy(s, u.c_str());
+    // Seuls les caractères du jeu G2 (envoyés par SS2) viennent du clavier du Minitel
+    int i = (int) basAccentNum((uint16_t) k);
+    if (i < 0 || pgm_read_byte(&basAccents[i].octets[0]) != 0x19) return;
+  }
+  if (k < 0x80 || k > 0xFFFF) return;
+  if (k <= 0x7FF) {  // Codé en UTF-8 sur 2 octets
+    s[0] = (char) (0xC0 | (k >> 6));
+    s[1] = (char) (0x80 | (k & 0x3F));
+    s[2] = 0;
+  }
+  else {  // Sur 3 octets
+    s[0] = (char) (0xE0 | (k >> 12));
+    s[1] = (char) (0x80 | ((k >> 6) & 0x3F));
+    s[2] = (char) (0x80 | (k & 0x3F));
+    s[3] = 0;
   }
 }
 
@@ -717,15 +870,15 @@ void basErase()
   // Efface à l'écran le caractère situé à gauche du curseur
   byte largeur = (basStyle & BAS_ST_LARGE) ? 2 : 1;
   if (basCol < largeur) {  // Le caractère est à la fin de la rangée précédente
-    minitel.moveCursorUp(1);
-    minitel.moveCursorRight(40 - largeur);
+    basMove(1, 0x0B, 0x41);
+    basMove(40 - largeur, 0x09, 0x43);
     basCol = 40 - largeur;
   }
   else {
-    minitel.moveCursorLeft(largeur);
+    basMove(largeur, 0x08, 0x44);
     basCol -= largeur;
   }
-  minitel.clearLineFromCursor();
+  basCsi(-1, 0x4B);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -744,8 +897,9 @@ byte basReadLine(char* buf, byte maxLen, boolean garder)
   else {
     buf[0] = 0;
   }
-  minitel.cursor();
+  basOut(0x11);
   while (resultat == 0xFF) {
+    basMusique();  // La mélodie de PLAY continue pendant la saisie
     unsigned long k = minitel.getKeyCode();
     if (k == 0) continue;
     if (k == ENVOI || k == 0x0D) resultat = BAS_K_OK;
@@ -772,21 +926,181 @@ byte basReadLine(char* buf, byte maxLen, boolean garder)
           basPuts(s);
         }
         else {
-          minitel.bip();  // La ligne est pleine
+          basOut(0x07);  // La ligne est pleine
         }
       }
     }
   }
-  minitel.noCursor();
+  basOut(0x14);
   return resultat;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
 
+//////////////////////////////////////////////////////////////////////////////////////
+/*
+  La musique en tâche de fond (PLAY)
+  ----------------------------------
+  PLAY "T120 O4 L4 C D E8 F8 G2" joue une mélodie sur le buzzer pendant que le programme
+  continue. La note suivante est lancée par basMusique, appelée entre deux instructions et
+  pendant les attentes (basCheckBreak) : tone() joue la note toute seule pendant ce temps.
+    A à G     une note, suivie de # ou + (dièse) ou - (bémol), d'une durée (1 ronde, 2
+              blanche, 4 noire, 8 croche... 64) et de points (durée x 1,5)
+    R ou P    un silence (même durée)
+    O n       l'octave (0 à 7, 4 au départ : le la de l'octave 4 fait 440 Hz) ; < et >
+              descendent ou montent d'une octave
+    L n       la durée des notes sans durée (4 au départ)
+    T n       le tempo : noires par minute (32 à 255, 120 au départ)
+  Une note sonne les 7/8 de sa durée, pour que deux notes semblables restent distinctes.
+  Le texte est vérifié en entier par PLAY : une erreur est signalée tout de suite.
+*/
+const char* basPlayP = NULL;          // Suite de la mélodie (dans le programme ou basPlayBuf)
+char basPlayBuf[BAS_STR_MAX + 1];
+unsigned long basPlayFin = 0;         // Fin de la note en cours (millis)
+byte basPlayOct = 4, basPlayLong = 4, basPlayTempo = 120;
+const uint16_t basPlayFreq[12] PROGMEM = {262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494};
+
+long basPlayNombre(const char** pp)
+{
+  // Un nombre (-1 s'il n'y en a pas)
+  const char* p = *pp;
+  if (!basIsDigit(*p)) return -1;
+  long n = 0;
+  while (basIsDigit(*p) && n < 1000) n = n * 10 + (*p++ - '0');
+  *pp = p;
+  return n;
+}
+
+const char* basPlayPas(const char* p, boolean jouer)
+{
+  // Lit la mélodie jusqu'à la prochaine note ou au prochain silence (inclus) et, si jouer
+  // est vrai, la joue. Renvoie la suite, ou NULL si le texte est incorrect. Le texte finit
+  // au zéro final ou au guillemet (une chaîne lue directement dans le programme).
+  while (*p && *p != '"') {
+    char c = *p++;
+    if (c >= 'a' && c <= 'z') c -= 32;
+    if (c == ' ') continue;
+    if (c == '<') { if (basPlayOct > 0) basPlayOct--; continue; }
+    if (c == '>') { if (basPlayOct < 7) basPlayOct++; continue; }
+    if (c == 'O' || c == 'L' || c == 'T') {
+      long n = basPlayNombre(&p);
+      if (c == 'O' && n >= 0 && n <= 7) basPlayOct = (byte) n;
+      else if (c == 'L' && n >= 1 && n <= 64) basPlayLong = (byte) n;
+      else if (c == 'T' && n >= 32 && n <= 255) basPlayTempo = (byte) n;
+      else return NULL;
+      continue;
+    }
+    int demiTon = -1;  // -1 : silence
+    if (c >= 'A' && c <= 'G') {
+      static const byte DEMI_TONS[7] = {9, 11, 0, 2, 4, 5, 7};  // A B C D E F G
+      demiTon = DEMI_TONS[c - 'A'];
+      if (*p == '#' || *p == '+') { demiTon++; p++; }
+      else if (*p == '-') { demiTon--; p++; }
+    }
+    else if (c != 'R' && c != 'P') return NULL;
+    long longueur = basPlayNombre(&p);
+    if (longueur == 0 || longueur > 64) return NULL;
+    if (longueur < 0) longueur = basPlayLong;
+    unsigned long duree = 240000UL / ((unsigned long) basPlayTempo * longueur);  // Ronde : 4 noires
+    unsigned long ajout = duree;
+    while (*p == '.') { ajout /= 2; duree += ajout; p++; }
+    if (jouer) {
+      if (demiTon >= 0) {
+        int octave = basPlayOct;
+        if (demiTon > 11) { demiTon -= 12; octave++; }
+        if (demiTon < 0) { demiTon += 12; octave--; }
+        unsigned long f = pgm_read_word(&basPlayFreq[demiTon]);
+        if (octave > 4) f <<= (octave - 4);
+        else if (octave < 4) f = (f + (1 << (4 - octave - 1))) >> (4 - octave);
+        if (f < 31) f = 31;
+        tone(BUZZER, (unsigned int) f, duree * 7 / 8);
+      }
+      else noTone(BUZZER);
+      basPlayFin = millis() + duree;
+    }
+    return p;
+  }
+  return p;
+}
+
+void basMusique()
+{
+  // Lance la note suivante de la mélodie quand la précédente est finie
+  if (basPlayP == NULL || (long) (millis() - basPlayFin) < 0) return;
+  if (*basPlayP == 0 || *basPlayP == '"') { basPlayP = NULL; noTone(BUZZER); return; }
+  const char* suite = basPlayPas(basPlayP, true);
+  basPlayP = suite;
+}
+
+void basMusiqueStop()
+{
+  basPlayP = NULL;
+  noTone(BUZZER);
+}
+
+void basMusiqueAttendre()
+{
+  // Attend la fin de la mélodie (ANNULATION et SOMMAIRE l'arrêtent)
+  while (basPlayP != NULL && basErr == 0) basCheckBreak();
+  if (basErr == BAS_E_BREAK) basMusiqueStop();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basPlayCorrect(const char* p)
+{
+  // Le texte de la mélodie est-il correct ? (sans rien jouer)
+  byte oct = basPlayOct, lon = basPlayLong, tempo = basPlayTempo;
+  while (p != NULL && *p && *p != '"') p = basPlayPas(p, false);
+  basPlayOct = oct;
+  basPlayLong = lon;
+  basPlayTempo = tempo;
+  return p != NULL;
+}
+
+void basPlay()
+{
+  // PLAY "mélodie" : la joue en tâche de fond, après la précédente. PLAY seul l'arrête.
+  basSkip();
+  if (*basP == 0 || *basP == ':' || basAtElse()) { basMusiqueStop(); return; }
+  const char* texte = NULL;
+  if (*basP == '"') {
+    // Une chaîne entre guillemets, seule : lue directement dans le programme, sans limite
+    // de longueur (le programme ne bouge pas pendant qu'il tourne)
+    char* fin = basP + 1;
+    while (*fin && *fin != '"') fin++;
+    char* debut = basP;
+    basP = (*fin == '"') ? fin + 1 : fin;
+    if (basCur != NULL && (basSkip(), *basP == 0 || *basP == ':' || basAtElse())) texte = debut + 1;
+    else basP = debut;
+  }
+  if (texte == NULL) {  // Une expression : la chaîne est recopiée
+    char s[BAS_STR_MAX + 1];
+    basStrExpr(s);
+    if (basErr) return;
+    if (!basPlayCorrect(s)) { basErr = BAS_E_VALEUR; return; }
+    basMusiqueAttendre();
+    if (basErr) return;
+    strcpy(basPlayBuf, s);
+    texte = basPlayBuf;
+  }
+  else {
+    if (!basPlayCorrect(texte)) { basErr = BAS_E_VALEUR; return; }
+    basMusiqueAttendre();
+    if (basErr) return;
+  }
+  basPlayP = texte;
+  basPlayFin = millis();
+  basMusique();
+}
+
+//////////
+
 void basCheckBreak()
 {
   // Regarde si SOMMAIRE ou ANNULATION a été frappée pendant l'exécution.
-  // Une autre touche est gardée pour INKEY$ et KEY.
+  // Une autre touche est gardée pour INKEY$ et KEY. La mélodie de PLAY continue.
+  basMusique();
   unsigned long k = minitel.getKeyCode();
   if (k == 0) return;
   if (k == SOMMAIRE || k == ANNULATION) basErr = BAS_E_BREAK;
@@ -844,19 +1158,104 @@ byte basGfxPoints(int cx, int cy)
   return points;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+  Les cases semi-graphiques et les zones de fond
+  ----------------------------------------------
+  Sur le Minitel, une case semi-graphique délimite une zone de fond : les cases qui la
+  suivent sur la rangée et qui ne délimitent rien (une case vide, une lettre) prennent son
+  fond, au moment de l'affichage, jusqu'au délimiteur suivant (constaté sur un Minitel 1B).
+  Une case dessinée sur un fond de couleur (PAPER) colorerait donc toute la fin de sa rangée.
+  Pour l'éviter, reBASIC pose un délimiteur noir (une case semi-graphique vide, sur fond
+  noir) juste après une suite de cases dessinées sur un fond de couleur, sauf si la case
+  suivante est déjà une case semi-graphique de reBASIC (basGfxMos) : elle a son propre fond.
+
+  Le dessin différé (FLIP)
+  ------------------------
+  Après FLIP, PLOT, LINE, BOX, CIRCLE et BIG ne dessinent plus qu'en mémoire : les cases
+  touchées sont notées dans basFlipListe, avec les points qu'elles montrent à l'écran.
+  FLIP envoie ensuite, en une fois, celles dont les points ont changé. Une case effacée
+  puis redessinée à l'identique n'est pas renvoyée : une animation va plus vite.
+  Si la liste est pleine, les cases notées sont envoyées aussitôt.
+*/
+byte basGfxMos[120];                 // Les cases où reBASIC a posé un caractère semi-graphique
+boolean basFlip = false;             // Dessin différé (FLIP)
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+#define BAS_FLIP_MAX 960
+#else
+#define BAS_FLIP_MAX 64              // Au-delà, les cases notées sont envoyées aussitôt
+#endif
+uint16_t basFlipListe[BAS_FLIP_MAX]; // Case (10 bits) et points à l'écran (6 bits)
+uint16_t basFlipNb = 0;
+
+boolean basBit(const byte* bits, int k) { return (bits[k >> 3] >> (k & 7)) & 1; }
+void basBitSet(byte* bits, int k) { bits[k >> 3] |= (1 << (k & 7)); }
+
 //////////////////////////////////////////////////////////////////////////////////////
 
-void basGfxCell(int cx, int cy)
+void basGfxSend(byte* cases)
 {
-  // Affiche la case (cx de 0 à 39, cy de 0 à 23) avec ses 6 points
-  if (cx < 0 || cx > 39 || cy < 0 || cy > 23) return;
-  if (cx == 39 && cy == 23) return;  // Ecrire dans la dernière case ferait défiler l'écran
-  minitel.moveCursorXY(cx + 1, cy + 1);
-  minitel.graphicMode();
-  minitel.graphic(basGfxPoints(cx, cy));
-  minitel.textMode();
-  basRestoreAttr();
-  basCol = (cx + 1) % 40;
+  // Affiche les cases notées dans cases (960 bits : une par case de l'écran), une seule fois
+  // chacune. Des cases qui se suivent sur une rangée sont envoyées à la suite, sans
+  // déplacer le curseur.
+  boolean graphique = false;
+  int suivante = -1;  // Case où se trouve le curseur
+  for (int k = 0; k < 960; k++) {
+    if (!basBit(cases, k)) continue;
+    int cx = k % 40;
+    int cy = k / 40;
+    if (k == 959) continue;  // Ecrire dans la dernière case ferait défiler l'écran
+    if (k != suivante) basMoveXY(cx + 1, cy + 1);
+    if (!graphique) {
+      basOut(0x0E);
+      graphique = true;
+    }
+    basGraphic(basGfxPoints(cx, cy));
+    basBitSet(basGfxMos, k);
+    suivante = (cx == 39) ? -1 : k + 1;
+    basCol = (cx + 1) % 40;
+    // Fin d'une suite de cases sur un fond de couleur : un délimiteur noir, pour que le
+    // fond ne déborde pas sur la suite de la rangée
+    if (basPaper != 0 && cx < 39 && k + 1 != 959 && !basBit(cases, k + 1) && !basBit(basGfxMos, k + 1)) {
+      basEsc(FOND_NOIR);
+      basGraphic(0);
+      basEsc(FOND_NOIR + basPaper);
+      basBitSet(basGfxMos, k + 1);
+      suivante = (cx + 1 == 39) ? -1 : k + 2;
+      basCol = (cx + 2) % 40;
+    }
+  }
+  if (graphique) {
+    basOut(0x0F);
+    basRestoreAttr();
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basFlipSend()
+{
+  // FLIP : envoie les cases notées dont les points ont changé, et vide la liste
+  byte cases[120];
+  memset(cases, 0, sizeof(cases));
+  for (uint16_t i = 0; i < basFlipNb; i++) {
+    int k = basFlipListe[i] & 0x3FF;
+    if (basGfxPoints(k % 40, k / 40) != (basFlipListe[i] >> 10)) basBitSet(cases, k);
+  }
+  basFlipNb = 0;
+  basGfxSend(cases);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basFlipNote(int k)
+{
+  // Dessin différé : la case k va changer en mémoire ; on note ce qu'elle montre à l'écran
+  for (uint16_t i = 0; i < basFlipNb; i++) {
+    if ((basFlipListe[i] & 0x3FF) == (uint16_t) k) return;  // Déjà notée
+  }
+  if (basFlipNb >= BAS_FLIP_MAX) basFlipSend();
+  basFlipListe[basFlipNb++] = (uint16_t) k | ((uint16_t) basGfxPoints(k % 40, k / 40) << 10);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -865,40 +1264,23 @@ void basGfxMark(byte* cases, long x, long y, boolean allume)
 {
   // Allume ou éteint un point et note sa case dans cases (960 bits : une par case de l'écran)
   if (x < 0 || x >= BAS_GFX_W || y < 0 || y >= BAS_GFX_H) return;
-  basGfxSet((int) x, (int) y, allume);
   unsigned int k = (unsigned int) (y / 3) * 40 + (unsigned int) (x / 2);
-  cases[k >> 3] |= (1 << (k & 7));
+  if (!basBit(cases, k)) {
+    if (basFlip) basFlipNote(k);
+    basBitSet(cases, k);
+  }
+  basGfxSet((int) x, (int) y, allume);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
 
 void basGfxFlush(byte* cases)
 {
-  // Affiche les cases notées par basGfxMark, une seule fois chacune. Des cases qui se
-  // suivent sur une rangée sont envoyées à la suite, sans déplacer le curseur.
-  boolean graphique = false;
-  int suivante = -1;  // Case où se trouve le curseur
-  for (int k = 0; k < 960; k++) {
-    if (!(cases[k >> 3] & (1 << (k & 7)))) continue;
-    int cx = k % 40;
-    int cy = k / 40;
-    if (cx == 39 && cy == 23) continue;  // Ecrire dans la dernière case ferait défiler l'écran
-    if (k != suivante) minitel.moveCursorXY(cx + 1, cy + 1);
-    if (!graphique) {
-      minitel.graphicMode();
-      graphique = true;
-    }
-    minitel.graphic(basGfxPoints(cx, cy));
-    suivante = (cx == 39) ? -1 : k + 1;
-    basCol = (cx + 1) % 40;
-  }
-  if (graphique) {
-    minitel.textMode();
-    basRestoreAttr();
-  }
+  // Affiche les cases notées par basGfxMark (rien en dessin différé : FLIP les enverra)
+  if (!basFlip) basGfxSend(cases);
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
+//////////
 
 void basGfxBox(long x1, long y1, long x2, long y2, boolean allume, boolean plein)
 {
@@ -999,9 +1381,109 @@ void basGfxCircle(long xc, long yc, long r, boolean allume, boolean plein)
 
 //////
 
+//////////////////////////////////////////////////////////////////////////////////////
+/*
+  BIG "TEXTE", x, y [, taille [, c]] : du texte en grand, dessiné avec des points (police
+  de 5 x 7 points, un point d'espace entre deux lettres), coin supérieur gauche en (x, y).
+  Chaque point de la police devient un carré de taille x taille points. Le texte remplace
+  ce qu'il y a dessous (les points éteints de chaque lettre sont éteints) ; avec c = 0, il
+  est effacé. Minuscules et lettres accentuées sont écrites en majuscules sans accent ; un
+  caractère inconnu devient « ? ».
+*/
+const char basBigCars[] PROGMEM = " !'-.:?0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*/,+=()<>%";
+const byte basBigPolice[][7] PROGMEM = {
+  // 7 rangées de 5 points (bit 4 à gauche), dans l'ordre de basBigCars
+  {0x00,0x00,0x00,0x00,0x00,0x00,0x00}, {0x04,0x04,0x04,0x04,0x04,0x00,0x04},
+  {0x04,0x04,0x08,0x00,0x00,0x00,0x00}, {0x00,0x00,0x00,0x1F,0x00,0x00,0x00},
+  {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C}, {0x00,0x0C,0x0C,0x00,0x0C,0x0C,0x00},
+  {0x0E,0x11,0x01,0x02,0x04,0x00,0x04},
+  {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
+  {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, {0x0E,0x11,0x01,0x06,0x01,0x11,0x0E},
+  {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E},
+  {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E}, {0x1F,0x01,0x02,0x04,0x08,0x08,0x08},
+  {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},
+  {0x0E,0x11,0x11,0x11,0x1F,0x11,0x11}, {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E},
+  {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E}, {0x1C,0x12,0x11,0x11,0x11,0x12,0x1C},
+  {0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F}, {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10},
+  {0x0E,0x11,0x10,0x17,0x11,0x11,0x0F}, {0x11,0x11,0x11,0x1F,0x11,0x11,0x11},
+  {0x0E,0x04,0x04,0x04,0x04,0x04,0x0E}, {0x07,0x02,0x02,0x02,0x02,0x12,0x0C},
+  {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, {0x10,0x10,0x10,0x10,0x10,0x10,0x1F},
+  {0x11,0x1B,0x15,0x15,0x11,0x11,0x11}, {0x11,0x11,0x19,0x15,0x13,0x11,0x11},
+  {0x0E,0x11,0x11,0x11,0x11,0x11,0x0E}, {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10},
+  {0x0E,0x11,0x11,0x11,0x15,0x12,0x0D}, {0x1E,0x11,0x11,0x1E,0x14,0x12,0x11},
+  {0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E}, {0x1F,0x04,0x04,0x04,0x04,0x04,0x04},
+  {0x11,0x11,0x11,0x11,0x11,0x11,0x0E}, {0x11,0x11,0x11,0x11,0x11,0x0A,0x04},
+  {0x11,0x11,0x11,0x15,0x15,0x15,0x0A}, {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11},
+  {0x11,0x11,0x11,0x0A,0x04,0x04,0x04}, {0x1F,0x01,0x02,0x04,0x08,0x10,0x1F},
+  {0x00,0x04,0x15,0x0E,0x15,0x04,0x00}, {0x01,0x01,0x02,0x04,0x08,0x10,0x10},
+  {0x00,0x00,0x00,0x00,0x0C,0x04,0x08}, {0x00,0x04,0x04,0x1F,0x04,0x04,0x00},
+  {0x00,0x00,0x1F,0x00,0x1F,0x00,0x00}, {0x02,0x04,0x08,0x08,0x08,0x04,0x02},
+  {0x08,0x04,0x02,0x02,0x02,0x04,0x08}, {0x02,0x04,0x08,0x10,0x08,0x04,0x02},
+  {0x08,0x04,0x02,0x01,0x02,0x04,0x08}, {0x18,0x19,0x02,0x04,0x08,0x13,0x03}
+};
+
+byte basBigIndex(const char** pp)
+{
+  // Le caractère UTF-8 qui commence en *pp : sa place dans basBigCars (on avance après lui)
+  const char* p = *pp;
+  uint16_t u = (byte) *p++;
+  if (u >= 0xC0 && u < 0xE0 && (*p & 0xC0) == 0x80) u = ((u & 0x1F) << 6) | (*p++ & 0x3F);
+  else if (u >= 0x80) {  // Autre caractère sur plusieurs octets : on le saute en entier
+    while ((*p & 0xC0) == 0x80) p++;
+    u = '?';
+  }
+  *pp = p;
+  if (u >= 'a' && u <= 'z') u -= 32;
+  else if (u >= 0xC0 && u <= 0xFF) {  // Lettres accentuées (Latin-1)
+    byte b = (byte) (u & 0xDF);  // Majuscule
+    if (b >= 0xC0 && b <= 0xC5) u = 'A';
+    else if (b == 0xC7) u = 'C';
+    else if (b >= 0xC8 && b <= 0xCB) u = 'E';
+    else if (b >= 0xCC && b <= 0xCF) u = 'I';
+    else if (b >= 0xD2 && b <= 0xD6) u = 'O';
+    else if (b >= 0xD9 && b <= 0xDC) u = 'U';
+    else u = '?';
+  }
+  for (byte i = 0; pgm_read_byte(basBigCars + i); i++) {
+    if (pgm_read_byte(basBigCars + i) == u) return i;
+  }
+  return 6;  // « ? »
+}
+
+void basBig(const char* texte, long x, long y, long taille, boolean allume)
+{
+  byte cases[120];
+  memset(cases, 0, sizeof(cases));
+  const char* p = texte;
+  long gx = x;
+  while (*p) {
+    byte g = basBigIndex(&p);
+    long largeur = (*p) ? 6 : 5;  // Le point d'espace entre deux lettres (pas après la dernière)
+    for (byte ry = 0; ry < 7; ry++) {
+      byte rangee = pgm_read_byte(&basBigPolice[g][ry]);
+      for (byte rx = 0; rx < largeur; rx++) {
+        boolean point = allume && rx < 5 && ((rangee >> (4 - rx)) & 1);
+        for (long dy = 0; dy < taille; dy++) {
+          long py = y + ry * taille + dy;
+          if (py < 0 || py >= BAS_GFX_H) continue;
+          for (long dx = 0; dx < taille; dx++) basGfxMark(cases, gx + rx * taille + dx, py, point);
+        }
+      }
+    }
+    gx += 6 * taille;
+    if (gx >= BAS_GFX_W) break;
+  }
+  basGfxFlush(cases);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 void basGfxClear()
 {
+  // L'écran a été effacé : le dessin en mémoire aussi
   memset(basGfx, 0, sizeof(basGfx));
+  memset(basGfxMos, 0, sizeof(basGfxMos));
+  basFlipNb = 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1060,7 +1542,8 @@ const char basTokNoms[][BAS_TOK_LEN] PROGMEM = {
   "SECOND", "DAY", "MONTH", "YEAR", "DREAD", "AREAD", "EOF", "HEX$",
   "UPPER$", "LOWER$", "OPEN", "CLOSE", "OUTPUT", "APPEND", "PINMODE", "DWRITE",
   "AWRITE", "LET", "RUN", "LIST", "NEW", "MEM", "RENUM", "AIDE",
-  "HELP", "SAVE", "LOAD", "MERGE", "FILES", "KILL", "EDIT"
+  "HELP", "SAVE", "LOAD", "MERGE", "FILES", "KILL", "EDIT", "FLIP",
+  "PLAY", "BIG", "SAVEVDT"
 };
 #define BAS_TOK_NB ((int) (sizeof(basTokNoms) / BAS_TOK_LEN))
 
@@ -1428,7 +1911,8 @@ boolean basIsStrStart()
     return (pgm_read_byte(nom + strlen_P(nom) - 1) == '$') || *basStep(q) == '$';
   }
   if (!basIsLetter(*q)) return false;
-  while (basIsLetter(*q)) q++;
+  q++;
+  if (basIsLetter(*q) || basIsDigit(*q)) q++;  // Nom de deux caractères
   return (*q == '$');
 }
 
@@ -1480,19 +1964,15 @@ unsigned int basFree()
   return BAS_MEM_SIZE - basProgLen - 4 * (unsigned int) basArrUsed;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void basClearArrays()
 {
-  // Oublie tous les tableaux
-  for (byte i = 0; i < 26; i++) {
-    basArrBase[i] = -1;
-    basArrDim[i] = 0;
-  }
+  // Oublie tous les tableaux et les variables de deux caractères
   basArrUsed = 0;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
+//////////
 
 void basClearVars()
 {
@@ -1518,38 +1998,167 @@ void basResetStacks()
   basDataIn = false;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+  Les tableaux et les variables de deux caractères
+  ------------------------------------------------
+  A à Z et A$ à Z$ ont leur place réservée (basVar, basStr). Le reste est rangé à la fin de
+  basMem, chacun à la suite du précédent, en descendant (le premier tout en haut), et on
+  le retrouve en les parcourant. Chacun occupe, de bas en haut :
+    - ses valeurs : un nombre (4 octets) par élément, ou BAS_STR_FLOATS nombres par chaîne ;
+    - son nombre d'éléments (1 pour une variable) ;
+    - son en-tête : genre (BAS_V_...), première et deuxième lettre du nom.
+  Ils ne bougent jamais : une adresse reste bonne jusqu'à RUN, NEW, CLEAR ou une ligne de
+  programme qui a besoin de leur place (basClearArrays).
+*/
+#define BAS_V_NUM  1  // Variable de deux caractères : AB, A1
+#define BAS_V_STR  2  // Chaîne de deux caractères : AB$
+#define BAS_V_TNUM 3  // Tableau : A(n), AB(n)
+#define BAS_V_TSTR 4  // Tableau de chaînes : A$(n), AB$(n)
+#define BAS_STR_FLOATS ((BAS_STR_MAX + 4) / 4)  // Place d'une chaîne, en nombres de 4 octets
 
-void basDim(byte idx, long n)
+uint32_t basMemU(int i) { uint32_t u; memcpy(&u, &basMem[i], 4); return u; }
+void basMemSetU(int i, uint32_t u) { memcpy(&basMem[i], &u, 4); }
+
+long basObjTaille(byte genre, long n)
 {
-  // Réserve le tableau idx avec les indices 0 à n
-  // Les tableaux sont rangés à la fin de basMem, le dernier réservé le plus bas
-  if (basArrBase[idx] >= 0 || n < 0) { basErr = BAS_E_VALEUR; return; }
-  if (n + 1 > (long) (basFree() / 4)) { basErr = BAS_E_MEMOIRE; return; }
-  basArrUsed += (int) n + 1;
-  basArrBase[idx] = BAS_MEM_FLOATS - basArrUsed;
-  basArrDim[idx] = (int) n;
-  for (long i = 0; i <= n; i++) basMem[basArrBase[idx] + i] = 0;
+  // Place occupée par les valeurs, en nombres de 4 octets
+  return (genre == BAS_V_STR || genre == BAS_V_TSTR) ? n * BAS_STR_FLOATS : n;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
-
-float* basArrRef(byte idx)
+float* basObj(byte genre, char c1, char c2, long* n)
 {
-  // Lit "(indice)" et renvoie l'adresse de l'élément du tableau idx (NULL en cas d'erreur)
-  basExpect('(');
-  long i = (long) basExpr();
-  basExpect(')');
-  if (basErr) return NULL;
-  if (basArrBase[idx] < 0) {  // Sans DIM, le tableau a les indices 0 à 10
-    basDim(idx, 10);
-    if (basErr) return NULL;
+  // Les valeurs du tableau ou de la variable (genre, c1 c2), et son nombre d'éléments
+  // dans *n ; NULL s'il n'existe pas encore
+  uint32_t entete = genre | ((uint32_t) (byte) c1 << 8) | ((uint32_t) (byte) c2 << 16);
+  int haut = BAS_MEM_FLOATS;
+  int bas = BAS_MEM_FLOATS - basArrUsed;
+  while (haut > bas) {
+    uint32_t e = basMemU(haut - 1);
+    long nb = (long) basMemU(haut - 2);
+    int taille = 2 + (int) basObjTaille(e & 0xFF, nb);
+    if (e == entete) {
+      *n = nb;
+      return &basMem[haut - taille];
+    }
+    haut -= taille;
   }
-  if (i < 0 || i > basArrDim[idx]) { basErr = BAS_E_INDICE; return NULL; }
-  return &basMem[basArrBase[idx] + i];
+  return NULL;
+}
+
+float* basObjNew(byte genre, char c1, char c2, long n)
+{
+  // Réserve un tableau de n éléments (1 pour une variable), mis à zéro ; NULL si la
+  // mémoire est pleine
+  long taille = 2 + basObjTaille(genre, n);
+  if (n < 1 || taille > (long) (basFree() / 4)) { basErr = BAS_E_MEMOIRE; return NULL; }
+  int haut = BAS_MEM_FLOATS - basArrUsed;
+  basArrUsed += (int) taille;
+  float* valeurs = &basMem[haut - taille];
+  memset(valeurs, 0, (taille - 2) * 4);
+  basMemSetU(haut - 2, (uint32_t) n);
+  basMemSetU(haut - 1, genre | ((uint32_t) (byte) c1 << 8) | ((uint32_t) (byte) c2 << 16));
+  return valeurs;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
+
+void basDim(byte genre, char c1, char c2, long n)
+{
+  // Réserve le tableau (genre, c1 c2) avec les indices 0 à n
+  long existe;
+  if (basObj(genre, c1, c2, &existe) != NULL || n < 0) { basErr = BAS_E_VALEUR; return; }
+  basObjNew(genre, c1, c2, n + 1);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basName(char* c1, char* c2, boolean* chaine)
+{
+  // Lit un nom de variable : une lettre, puis une lettre ou un chiffre (facultatif), puis
+  // $ pour une chaîne. Faux (erreur de syntaxe) si ce n'est pas un nom.
+  basSkip();
+  if (!basIsLetter(*basP)) { basErr = BAS_E_SYNTAXE; return false; }
+  *c1 = *basP++;
+  *c2 = 0;
+  if (basIsLetter(*basP) || basIsDigit(*basP)) *c2 = *basP++;
+  if (basIsLetter(*basP) || basIsDigit(*basP)) { basErr = BAS_E_SYNTAXE; return false; }  // Trois caractères ou plus
+  *chaine = (*basP == '$');
+  if (*chaine) basP++;
+  return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+float basZero = 0;   // Ce que vaut une variable de deux caractères pas encore écrite
+char basVide[1] = "";
+
+boolean basRef(float** num, char** str, boolean ecrire)
+{
+  // Lit une variable ou un élément de tableau (A, AB, A$, AB$, A(i), AB$(i)...) et range
+  // son adresse dans *num (un nombre) ou *str (une chaîne de BAS_STR_MAX + 1 octets),
+  // l'autre valant NULL. Si ecrire est faux, une variable de deux caractères qui n'existe
+  // pas encore vaut 0 ou "" (sans être créée). (Pas de structure en paramètre : l'IDE
+  // Arduino déclare les fonctions avant les types du croquis.)
+  char c1, c2;
+  boolean chaine;
+  *num = NULL;
+  *str = NULL;
+  if (!basName(&c1, &c2, &chaine)) return false;
+  if (*basP == '(') {  // Elément de tableau
+    if (!basEnter()) return false;
+    basP++;
+    long i = (long) basExpr();
+    basExpect(')');
+    basDepth--;
+    if (basErr) return false;
+    byte genre = chaine ? BAS_V_TSTR : BAS_V_TNUM;
+    long n;
+    float* valeurs = basObj(genre, c1, c2, &n);
+    if (valeurs == NULL) {  // Sans DIM, le tableau a les indices 0 à 10
+      valeurs = basObjNew(genre, c1, c2, 11);
+      if (valeurs == NULL) return false;
+      n = 11;
+    }
+    if (i < 0 || i >= n) { basErr = BAS_E_INDICE; return false; }
+    if (chaine) *str = (char*) (valeurs + i * BAS_STR_FLOATS);
+    else *num = valeurs + i;
+    return true;
+  }
+  if (c2 == 0) {  // A à Z, A$ à Z$
+    if (chaine) *str = basStr[c1 - 'A'];
+    else *num = &basVar[c1 - 'A'];
+    return true;
+  }
+  byte genre = chaine ? BAS_V_STR : BAS_V_NUM;
+  long n;
+  float* valeurs = basObj(genre, c1, c2, &n);
+  if (valeurs == NULL) {
+    if (ecrire) valeurs = basObjNew(genre, c1, c2, 1);
+    if (valeurs == NULL) {
+      if (basErr) return false;
+      basZero = 0;
+      basVide[0] = 0;
+      if (chaine) *str = basVide;
+      else *num = &basZero;
+      return true;
+    }
+  }
+  if (chaine) *str = (char*) valeurs;
+  else *num = valeurs;
+  return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basSetStr(char* dst, const char* src)
+{
+  // Range une chaîne dans une variable (au plus BAS_STR_MAX octets, sans couper un caractère)
+  dst[0] = 0;
+  basStrAppend(dst, src, src + strlen(src));
+}
+
+//////////
 // Chaînes de caractères
 //////////////////////////////////////////////////////////////////////////////////////
 
@@ -1740,9 +2349,12 @@ void basStrPrimary(char* dst)
     if (*basP == '"') basP++;
     return;
   }
-  if (basIsLetter(basP[0]) && basP[1] == '$') {  // Variable A$ à Z$
-    strcpy(dst, basStr[basP[0] - 'A']);
-    basP += 2;
+  if (basIsLetter(basP[0])) {  // Variable ou élément de tableau : A$, AB$, A$(i)...
+    float* refNum;
+    char* refStr;
+    if (!basRef(&refNum, &refStr, false)) return;
+    if (refStr == NULL) { basErr = BAS_E_TYPE; return; }
+    strcpy(dst, refStr);
     return;
   }
   if (BAS_KW("INKEY$")) {
@@ -1989,7 +2601,7 @@ float basPrimary()
   }
 
   // Fonctions
-  if (basIsTok(basP) || (basIsLetter(c) && basIsLetter(basP[1]))) {
+  if (basIsTok(basP)) {
     if (!basEnter()) return 0;
     float v = 0;
     if (BAS_KW("LEN")) v = basStrFunc('N');  // N, L ou C : dernière lettre du nom de la fonction
@@ -2054,15 +2666,11 @@ float basPrimary()
 
   // Variable ou élément de tableau
   if (basIsLetter(c)) {
-    byte idx = c - 'A';
-    basP++;
-    if (*basP == '(') {
-      if (!basEnter()) return 0;
-      float* element = basArrRef(idx);
-      basDepth--;
-      return (element != NULL) ? *element : 0;
-    }
-    return basVar[idx];
+    float* refNum;
+    char* refStr;
+    if (!basRef(&refNum, &refStr, false)) return 0;
+    if (refNum == NULL) { basErr = BAS_E_TYPE; return 0; }
+    return *refNum;
   }
 
   basErr = BAS_E_SYNTAXE;
@@ -2327,6 +2935,79 @@ boolean basFileName(char* nom, const char* extension, boolean* pc)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
+//////////////////////////////////////////////////////////////////////////////////////
+/*
+  SAVEVDT "NOM" : enregistre l'écran en page Vidéotex (NOM.VDT sur la carte SD)
+  ------------------------------------------------------------------------------
+  reBASIC ne garde pas l'écran en mémoire : il garde ce qu'il a envoyé au Minitel. Quand le
+  programme lancé par RUN contient SAVEVDT, tout ce qu'il affiche est aussi écrit dans le
+  fichier SAVEVDT.TMP de la carte SD (basOut), qui repart de zéro à chaque CLS. SAVEVDT en
+  fait une copie : rejouée par le menu 2 ou par VDT, elle redessine l'écran tel qu'il était.
+  Elle commence par le passage en mode rouleau (celui de reBASIC) et un effacement.
+  Après la fin du programme, SAVEVDT tapé au clavier enregistre encore son dernier écran.
+*/
+#define BAS_CAPTURE "/SAVEVDT.TMP"
+
+void basCaptureDebut()
+{
+  // (Re)commence l'enregistrement de ce que le programme affiche
+  if (basCaptureOn) basCapture.close();
+  basCaptureOn = false;
+  SD.remove(BAS_CAPTURE);
+  basCapture = SD.open(BAS_CAPTURE, FILE_WRITE);
+  if (!basCapture) return;  // Pas de carte SD : SAVEVDT le dira
+  static const byte ENTETE[] = {0x1B, 0x3A, 0x69, 0x43};  // PRO2 : mode rouleau
+  for (byte i = 0; i < sizeof(ENTETE); i++) basCapture.write(ENTETE[i]);
+  basCaptureOn = true;
+}
+
+void basCaptureFin()
+{
+  if (basCaptureOn) basCapture.close();
+  basCaptureOn = false;
+}
+
+boolean basProgUtilise(const char* mot)
+{
+  // Le programme contient-il ce mot-clé ? (son token de deux octets, qui ne peut pas
+  // apparaître ailleurs : 0xFF n'existe pas en UTF-8)
+  int id = -1;
+  for (int i = BAS_TOK_UN; i < BAS_TOK_NB; i++) if (basSameP(mot, basTokNom(i))) id = i;
+  if (id < 0) return false;
+  for (unsigned int i = 0; i + 1 < basProgLen; i++) {
+    if (basProg[i] == BAS_TOK_EXT && basProg[i + 1] == 0x80 + id - BAS_TOK_UN) return true;
+  }
+  return false;
+}
+
+void basSaveVdt()
+{
+  char nom[14];
+  if (!basFileName(nom, PSTR(".VDT"), NULL)) return;
+  boolean enCours = basCaptureOn;
+  basCaptureFin();
+  File source = SD.open(BAS_CAPTURE);
+  if (!source) { basErr = BAS_E_INTROUV; return; }  // Rien d'enregistré (pas de SAVEVDT dans le programme)
+  SD.remove(nom);
+  File copie = SD.open(nom, FILE_WRITE);
+  if (!copie) basErr = BAS_E_FICHIER;
+  else {
+    while (source.available()) copie.write((byte) source.read());
+    copie.close();
+  }
+  source.close();
+  if (enCours) {  // L'enregistrement continue, à la suite
+#ifdef FILE_APPEND
+    basCapture = SD.open(BAS_CAPTURE, FILE_APPEND);  // ESP32 : FILE_WRITE effacerait le fichier
+#else
+    basCapture = SD.open(BAS_CAPTURE, FILE_WRITE);   // ATmega : FILE_WRITE écrit à la fin
+#endif
+    basCaptureOn = (bool) basCapture;
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 void basSave()
 {
   char nom[14];
@@ -2451,15 +3132,15 @@ void basVdt()
   minitel.pageMode();  // Une page Vidéotex est faite pour le mode page : pas de défilement
   int compteur = 0;
   while (fichier.available() && basErr == 0) {
-    minitel.writeByte(fichier.read() & 0x7F);  // Le Vidéotex est un code sur 7 bits
+    basOut(fichier.read() & 0x7F);  // Le Vidéotex est un code sur 7 bits
     if (++compteur == 32) {  // De temps en temps, on regarde le clavier (ANNULATION, SOMMAIRE)
       compteur = 0;
       basCheckBreak();
     }
   }
   fichier.close();
-  minitel.writeByte(0x0F);  // Retour aux caractères texte (G0) si la page finit en semi-graphique
-  minitel.noCursor();       // Une page peut avoir allumé le curseur
+  basOut(0x0F);  // Retour aux caractères texte (G0) si la page finit en semi-graphique
+  basOut(0x14);       // Une page peut avoir allumé le curseur
   minitel.scrollMode();     // reBASIC travaille en mode rouleau
   basResetAttr();
   basCol = 0;               // Position inconnue : la page a pu laisser le curseur n'importe où
@@ -2613,7 +3294,7 @@ void basPcFiles()
     if (n > 4 && strcasecmp_P(basInBuf + n - 4, PSTR(".BAS")) == 0) basInBuf[n - 4] = 0;
     basPuts(basInBuf);
     if (taille != NULL) {
-      while (basCol < 13) { minitel.writeByte(' '); basAvance(); }
+      while (basCol < 13) { basOut(' '); basAvance(); }
       basPuts(taille);
     }
     basNewLine();
@@ -2675,7 +3356,7 @@ void basFiles()
     byte n = strlen(nom);
     if (n > 4 && strcasecmp_P(nom + n - 4, PSTR(".BAS")) == 0) nom[n - 4] = 0;
     basPuts(nom);
-    while (basCol < 13) { minitel.writeByte(' '); basAvance(); }
+    while (basCol < 13) { basOut(' '); basAvance(); }
     basPrintNum(taille);
     basNewLine();
     strcpy(dernier, suivant);
@@ -2816,18 +3497,13 @@ void basFileInput(boolean ligne)
   basExpect(',');
   if (basErr) return;
   while (basErr == 0) {
-    basSkip();
-    if (!basIsLetter(*basP) || basIsLetter(basP[1])) { basErr = BAS_E_SYNTAXE; return; }
-    byte idx = *basP - 'A';
-    basP++;
-    boolean chaine = false;
-    float* cible = &basVar[idx];
-    if (*basP == '$') { basP++; chaine = true; }
-    else if (*basP == '(') { cible = basArrRef(idx); if (cible == NULL) return; }
-    if (ligne && !chaine) { basErr = BAS_E_TYPE; return; }
+    float* cibleNum;
+    char* cibleStr;
+    if (!basRef(&cibleNum, &cibleStr, true)) return;
+    if (ligne && cibleStr == NULL) { basErr = BAS_E_TYPE; return; }
     if (!basFileField(basFile[i], basInBuf, ligne)) { basErr = BAS_E_FINFICH; return; }
-    if (chaine) strcpy(basStr[idx], basInBuf);
-    else *cible = basStrToNum(basInBuf);
+    if (cibleStr) basSetStr(cibleStr, basInBuf);
+    else *cibleNum = basStrToNum(basInBuf);
     if (ligne) break;
     basSkip();
     if (*basP == ',') basP++;
@@ -2863,8 +3539,8 @@ boolean basListPause()
   basPutsP(PSTR(" : arrêt"));
   unsigned long k = 0;
   while (k != SUITE && k != ENVOI && k != 0x0D && k != ANNULATION && k != SOMMAIRE) k = minitel.getKeyCode();
-  minitel.writeByte(0x0D);       // On efface la ligne des touches
-  minitel.clearLineFromCursor();
+  basOut(0x0D);       // On efface la ligne des touches
+  basCsi(-1, 0x4B);
   basCol = 0;
   return k != ANNULATION && k != SOMMAIRE;
 }
@@ -2958,7 +3634,7 @@ void basPrint()
       }
       else {            // A l'écran : colonne suivante multiple de 10
         do {
-          minitel.writeByte(' ');
+          basOut(' ');
           basAvance();
         } while (basCol % 10 != 0);
       }
@@ -3006,14 +3682,10 @@ void basInput()
   }
   while (basErr == 0) {
     // La variable à remplir
-    basSkip();
-    if (!basIsLetter(*basP) || basIsLetter(basP[1])) { basErr = BAS_E_SYNTAXE; return; }
-    byte idx = *basP - 'A';
-    basP++;
-    boolean chaine = false;
-    float* cible = &basVar[idx];
-    if (*basP == '$') { basP++; chaine = true; }
-    else if (*basP == '(') { cible = basArrRef(idx); if (cible == NULL) return; }
+    float* cibleNum;
+    char* cibleStr;
+    if (!basRef(&cibleNum, &cibleStr, true)) return;
+    boolean chaine = (cibleStr != NULL);
     // La saisie
     boolean correct = false;
     while (!correct) {
@@ -3023,7 +3695,7 @@ void basInput()
       basNewLine();
       if (r == BAS_K_QUITTER || r == BAS_K_ANNULER) { basErr = BAS_E_BREAK; return; }
       if (chaine) {
-        strcpy(basStr[idx], basInBuf);
+        basSetStr(cibleStr, basInBuf);
         correct = true;
       }
       else {
@@ -3034,7 +3706,7 @@ void basInput()
         float v;
         basUpper(q);  // Pour le E de l'exposant
         if (basParseNum(&q, &v)) {
-          *cible = negatif ? -v : v;
+          *cibleNum = negatif ? -v : v;
           correct = true;
         }
         else {
@@ -3052,10 +3724,17 @@ void basInput()
 
 void basFor()
 {
-  basSkip();
-  if (!basIsLetter(*basP) || basIsLetter(basP[1])) { basErr = BAS_E_SYNTAXE; return; }
-  byte idx = *basP - 'A';
-  basP++;
+  // La variable : un nombre, ni chaîne ni tableau
+  char* nom = basP;
+  char c1, c2;
+  boolean chaine;
+  if (!basName(&c1, &c2, &chaine)) return;
+  if (chaine || *basP == '(') { basErr = BAS_E_SYNTAXE; return; }
+  basP = nom;
+  float* refNum;
+  char* refStr;
+  if (!basRef(&refNum, &refStr, true)) return;
+  float* var = refNum;
   basExpect('=');
   float debut = basExpr();
   if (basErr) return;
@@ -3066,11 +3745,11 @@ void basFor()
   if (basErr) return;
   // Si une boucle sur la même variable est déjà en cours, elle est abandonnée
   for (byte i = 0; i < basForTop; i++) {
-    if (basForVar[i] == idx) { basForTop = i; break; }
+    if (basForVar[i] == var) { basForTop = i; break; }
   }
   if (basForTop >= BAS_FOR_MAX) { basErr = BAS_E_IMBRIC; return; }
-  basVar[idx] = debut;
-  basForVar[basForTop] = idx;
+  *var = debut;
+  basForVar[basForTop] = var;
   basForLimit[basForTop] = limite;
   basForStep[basForTop] = pas;
   basForLine[basForTop] = basCur;
@@ -3083,15 +3762,17 @@ void basFor()
 void basNext()
 {
   basSkip();
-  if (basIsLetter(*basP) && !basIsLetter(basP[1])) {  // NEXT avec le nom de la variable
-    byte idx = *basP - 'A';
-    basP++;
-    while (basForTop > 0 && basForVar[basForTop - 1] != idx) basForTop--;
+  if (basIsLetter(*basP)) {  // NEXT avec le nom de la variable
+    float* refNum;
+    char* refStr;
+    if (!basRef(&refNum, &refStr, false)) return;
+    if (refNum == NULL) { basErr = BAS_E_SYNTAXE; return; }
+    while (basForTop > 0 && basForVar[basForTop - 1] != refNum) basForTop--;
   }
   if (basForTop == 0) { basErr = BAS_E_NEXT; return; }
   byte i = basForTop - 1;
-  float v = basVar[basForVar[i]] + basForStep[i];
-  basVar[basForVar[i]] = v;
+  float v = *basForVar[i] + basForStep[i];
+  *basForVar[i] = v;
   if ((basForStep[i] >= 0 && v <= basForLimit[i]) || (basForStep[i] < 0 && v >= basForLimit[i])) {
     basCur = basForLine[i];  // On repart juste après le FOR
     basP = basForPos[i];
@@ -3105,35 +3786,24 @@ void basNext()
 
 void basLet()
 {
-  // Affectation : A = ...   A$ = ...   A(i) = ...
-  basSkip();
-  if (!basIsLetter(*basP) || basIsLetter(basP[1])) { basErr = BAS_E_SYNTAXE; return; }
-  byte idx = *basP - 'A';
-  basP++;
-  if (*basP == '$') {
-    basP++;
-    basExpect('=');
-    if (basErr) return;
+  // Affectation : A = ...   A$ = ...   A(i) = ...   AB$(i) = ...
+  float* cibleNum;
+  char* cibleStr;
+  if (!basRef(&cibleNum, &cibleStr, true)) return;
+  basExpect('=');
+  if (basErr) return;
+  if (cibleStr) {
     char s[BAS_STR_MAX + 1];
     basStrExpr(s);
-    if (basErr == 0) strcpy(basStr[idx], s);
-  }
-  else if (*basP == '(') {
-    float* element = basArrRef(idx);
-    basExpect('=');
-    if (basErr) return;
-    float v = basExpr();
-    if (basErr == 0) *element = v;
+    if (basErr == 0) strcpy(cibleStr, s);
   }
   else {
-    basExpect('=');
-    if (basErr) return;
     float v = basExpr();
-    if (basErr == 0) basVar[idx] = v;
+    if (basErr == 0) *cibleNum = v;
   }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
+//////////
 
 void basGosub(unsigned int num)
 {
@@ -3337,18 +4007,13 @@ void basRead()
 {
   // READ variable[,variable...]
   while (basErr == 0) {
-    basSkip();
-    if (!basIsLetter(*basP) || basIsLetter(basP[1])) { basErr = BAS_E_SYNTAXE; return; }
-    byte idx = *basP - 'A';
-    basP++;
-    boolean chaine = false;
-    float* cible = &basVar[idx];
-    if (*basP == '$') { basP++; chaine = true; }
-    else if (*basP == '(') { cible = basArrRef(idx); if (cible == NULL) return; }
+    float* cibleNum;
+    char* cibleStr;
+    if (!basRef(&cibleNum, &cibleStr, true)) return;
     char donnee[BAS_STR_MAX + 1];
     if (!basDataNext(donnee)) return;
-    if (chaine) strcpy(basStr[idx], donnee);
-    else if (basIsNumber(donnee)) *cible = basStrToNum(donnee);
+    if (cibleStr) strcpy(cibleStr, donnee);
+    else if (basIsNumber(donnee)) *cibleNum = basStrToNum(donnee);
     else { basErr = BAS_E_TYPE; return; }
     basSkip();
     if (*basP == ',') basP++;
@@ -3610,19 +4275,20 @@ void basStatement()
   else if (BAS_KW("DIM")) {
     boolean encore = true;
     while (encore && basErr == 0) {
-      basSkip();
-      if (!basIsLetter(*basP) || basP[1] != '(') { basErr = BAS_E_SYNTAXE; return; }
-      byte idx = *basP - 'A';
-      basP++;
+      char c1, c2;
+      boolean chaine;
+      if (!basName(&c1, &c2, &chaine)) return;
+      if (*basP != '(') { basErr = BAS_E_SYNTAXE; return; }
       long n = (long) basArg();
-      if (basErr == 0) basDim(idx, n);
+      if (basErr == 0) basDim(chaine ? BAS_V_TSTR : BAS_V_TNUM, c1, c2, n);
       basSkip();
       encore = (*basP == ',');  // Plusieurs tableaux séparés par des virgules
       if (encore) basP++;
     }
   }
   else if (BAS_KW("CLS")) {
-    minitel.newScreen();  // Le Minitel revient aussi à l'affichage normal
+    if (basCaptureOn) basCaptureDebut();  // SAVEVDT : l'écran repart de zéro
+    basOut(0x0C);  // Le Minitel revient aussi à l'affichage normal
     basCol = 0;
     basGfxClear();
     basInk = 7;
@@ -3655,14 +4321,44 @@ void basStatement()
     if (basErr) return;
     if (genre == 'C' && c[2] < 0) { basErr = BAS_E_VALEUR; return; }
     if (genre == 'P') {
-      if (c[0] >= 0 && c[0] < BAS_GFX_W && c[1] >= 0 && c[1] < BAS_GFX_H) {
-        basGfxSet((int) c[0], (int) c[1], allume);
-        basGfxCell((int) c[0] / 2, (int) c[1] / 3);
-      }
+      byte cases[120];
+      memset(cases, 0, sizeof(cases));
+      basGfxMark(cases, c[0], c[1], allume);
+      basGfxFlush(cases);
     }
     else if (genre == 'L') basGfxLine(c[0], c[1], c[2], c[3], allume);
     else if (genre == 'B') basGfxBox(c[0], c[1], c[2], c[3], allume, plein);
     else basGfxCircle(c[0], c[1], c[2], allume, plein);
+  }
+  else if (BAS_KW("PLAY")) basPlay();
+  else if (BAS_KW("SAVEVDT")) basSaveVdt();
+  else if (BAS_KW("BIG")) {
+    char texte[BAS_STR_MAX + 1];
+    basStrExpr(texte);
+    long c[4] = {0, 0, 1, 1};  // x, y, taille, allumé
+    byte n = 0;
+    while (basErr == 0 && n < 4) {
+      basSkip();
+      if (*basP != ',') break;
+      basP++;
+      float v = basExpr();
+      if (v < -1000 || v > 1000) { if (basErr == 0) basErr = BAS_E_VALEUR; }
+      c[n++] = (long) v;
+    }
+    if (basErr) return;
+    if (n < 2 || c[2] < 1 || c[2] > 8) { basErr = (n < 2) ? BAS_E_SYNTAXE : BAS_E_VALEUR; return; }
+    basBig(texte, c[0], c[1], c[2], c[3] != 0);
+  }
+  else if (BAS_KW("FLIP")) {
+    // FLIP : envoie les cases changées et passe en dessin différé ; FLIP 0 revient au dessin immédiat
+    boolean differe = true;
+    basSkip();
+    if (*basP != 0 && *basP != ':' && !basAtElse()) {
+      differe = (basExpr() != 0);
+      if (basErr) return;
+    }
+    basFlipSend();
+    basFlip = differe;
   }
   else if (BAS_KW("LOCATE")) {
     long x = (long) basExpr();
@@ -3670,7 +4366,7 @@ void basStatement()
     long y = (long) basExpr();
     if (basErr) return;
     if (x < 1 || x > 40 || y < 1 || y > 24) { basErr = BAS_E_VALEUR; return; }
-    minitel.moveCursorXY((int) x, (int) y);
+    basMoveXY((int) x, (int) y);
     basCol = (byte) (x - 1);
   }
   else if (BAS_KW("COLOR") || BAS_KW("PAPER") || BAS_KW("SIZE")) {
@@ -3679,20 +4375,20 @@ void basStatement()
     if (basErr) return;
     if (n < 0 || n > ((genre == 'S') ? 3 : 7)) { basErr = BAS_E_VALEUR; return; }
     if (genre == 'C') {
-      minitel.attributs(CARACTERE_NOIR + (byte) n);  // 0 noir, 1 rouge, 2 vert, 3 jaune, 4 bleu, 5 magenta, 6 cyan, 7 blanc
+      basAttributs(CARACTERE_NOIR + (byte) n);  // 0 noir, 1 rouge, 2 vert, 3 jaune, 4 bleu, 5 magenta, 6 cyan, 7 blanc
       basInk = (byte) n;
     }
     else if (genre == 'P') {
-      minitel.attributs(FOND_NOIR + (byte) n);  // Pris en compte au prochain espace (attribut de zone)
+      basAttributs(FOND_NOIR + (byte) n);  // Pris en compte au prochain espace (attribut de zone)
       basPaper = (byte) n;
     }
     else {
       // 0 normale, 1 double hauteur, 2 double largeur, 3 double taille. Pour passer en
-      // double hauteur, minitel.attributs() descend le curseur d'une rangée : le texte
+      // double hauteur, basAttributs() descend le curseur d'une rangée : le texte
       // occupe alors la rangée de départ et la suivante.
       boolean hautAvant = (basStyle & BAS_ST_HAUT);
       boolean haut = (n & 1);
-      if (haut && !hautAvant) minitel.attributs(GRANDEUR_NORMALE + (byte) n);
+      if (haut && !hautAvant) basAttributs(GRANDEUR_NORMALE + (byte) n);
       else basEsc(GRANDEUR_NORMALE + (byte) n);
       basStyle = (basStyle & 0x0F) | ((byte) n << 4);
     }
@@ -3703,9 +4399,9 @@ void basStatement()
     long n = (long) basExpr();
     if (basErr) return;
     byte bit = (genre == 'I') ? BAS_ST_INVERSE : (genre == 'F') ? BAS_ST_FLASH : BAS_ST_SOULIGNE;
-    if (genre == 'I') minitel.attributs((n != 0) ? INVERSION_FOND : FOND_NORMAL);
-    else if (genre == 'F') minitel.attributs((n != 0) ? CLIGNOTEMENT : FIXE);
-    else minitel.attributs((n != 0) ? DEBUT_LIGNAGE : FIN_LIGNAGE);  // Au prochain espace (attribut de zone)
+    if (genre == 'I') basAttributs((n != 0) ? INVERSION_FOND : FOND_NORMAL);
+    else if (genre == 'F') basAttributs((n != 0) ? CLIGNOTEMENT : FIXE);
+    else basAttributs((n != 0) ? DEBUT_LIGNAGE : FIN_LIGNAGE);  // Au prochain espace (attribut de zone)
     if (n != 0) basStyle |= bit;
     else basStyle &= ~bit;
     basAttr = true;
@@ -3724,13 +4420,14 @@ void basStatement()
     basEditPending = true;
     basStop = true;
   }
-  else if (BAS_KW("BEEP")) minitel.bip();
+  else if (BAS_KW("BEEP")) basOut(0x07);
   else if (BAS_KW("SOUND")) {
     long frequence = (long) basExpr();
     basExpect(',');
     long duree = (long) basExpr();
     if (basErr) return;
     if (frequence < 31 || frequence > 20000 || duree < 0 || duree > 60000) { basErr = BAS_E_VALEUR; return; }
+    basMusiqueStop();  // Le buzzer ne joue qu'un son à la fois
     tone(BUZZER, (unsigned int) frequence, duree);
     basWait(duree);
     noTone(BUZZER);
@@ -3744,9 +4441,19 @@ void basStatement()
   else if (BAS_KW("RUN")) {
     basCloseAll();
     basClearVars();
+    basMusiqueStop();
+    basPlayOct = 4;
+    basPlayLong = 4;
+    basPlayTempo = 120;
     basTimer0 = millis();
     randomSeed(micros());
     if (basProgLen == 0) { basStop = true; return; }
+    if (basProgUtilise(PSTR("SAVEVDT"))) {  // SAVEVDT : on enregistre ce que le programme affiche
+      basCaptureDebut();
+      basOut(0x0C);
+      basCol = 0;
+      basGfxClear();
+    }
     basCur = basProg;
     basP = (char*) (basProg + 3);
     basJumped = true;
@@ -3837,6 +4544,16 @@ void basExecuter(char* p)
   basForTop = 0;
   basWhTop = 0;
   basRun();
+  if (basErr == 0) basMusiqueAttendre();  // Fin du programme : la mélodie se termine
+  else basMusiqueStop();
+  basCaptureFin();
+  if (basFlip) {  // Dessin différé : ce qui n'a pas encore été envoyé s'affiche
+    byte erreur = basErr;
+    basErr = 0;
+    basFlipSend();
+    basFlip = false;
+    basErr = erreur;
+  }
   if (basErr) basPrintError();
   if (basCur != NULL) basCloseAll();  // Un programme s'est arrêté (fin, erreur...) : ses fichiers sont fermés
   if (basAttr) basResetAttr();  // On revient à l'affichage normal
@@ -3850,7 +4567,7 @@ char basLancer[BAS_STR_MAX + 1] = "";  // Programme à charger et lancer en entr
 
 void basic()
 {
-  minitel.newScreen();
+  basOut(0x0C);
   minitel.echo(false);   // C'est le BASIC qui affiche ce qui est tapé au clavier
   minitel.scrollMode();  // L'écran défile quand on arrive en bas
   basCol = 0;
@@ -3920,7 +4637,7 @@ void basic()
   }
 
   basCloseAll();
-  minitel.noCursor();
+  basOut(0x14);
   minitel.pageMode();  // Retour au mode page pour les autres écrans
 }
 

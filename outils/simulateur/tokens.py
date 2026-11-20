@@ -20,7 +20,8 @@ TOK_NOMS = [
     'SECOND', 'DAY', 'MONTH', 'YEAR', 'DREAD', 'AREAD', 'EOF', 'HEX$',
     'UPPER$', 'LOWER$', 'OPEN', 'CLOSE', 'OUTPUT', 'APPEND', 'PINMODE', 'DWRITE',
     'AWRITE', 'LET', 'RUN', 'LIST', 'NEW', 'MEM', 'RENUM', 'AIDE',
-    'HELP', 'SAVE', 'LOAD', 'MERGE', 'FILES', 'KILL', 'EDIT',
+    'HELP', 'SAVE', 'LOAD', 'MERGE', 'FILES', 'KILL', 'EDIT', 'FLIP',
+    'PLAY', 'BIG', 'SAVEVDT',
 ]
 TOK_UN = 64
 

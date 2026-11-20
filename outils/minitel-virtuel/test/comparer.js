@@ -190,13 +190,20 @@ function differences(a, b) {
 
 let n = 0, ok = 0, aleatoires = 0;
 const echecs = [];
+// SEUL=nom : ne compare que les cas dont le nom contient ce texte (pour aller vite)
+const seul = process.env.SEUL;
 function comparer(nom, script, limite, aleatoire, code) {
+  if (seul && !nom.includes(seul)) return;
   if (process.env.TRACE) console.error("> " + nom);
   n++;
   const c = executerC(script, limite);
   const j = executerJS(script, limite || 400000);
   const d = differences(c, j);
-  if (d.length === 0) { ok++; return; }
+  if (d.length === 0) {
+    ok++;
+    if (seul && detail) console.log(`\n=== ${nom}\n` + texte(c));
+    return;
+  }
   if (aleatoire) { aleatoires++; return; }
   echecs.push(nom);
   console.log(`\n=== ${nom} : ${d.length} case(s) différente(s)`);
@@ -244,6 +251,7 @@ const extra = [
   ['aide0', '{GUIDE}{SNAP}{ENVOI}'],
   ['aide1', '{GUIDE}{SUITE}{SNAP}{ENVOI}'],
   ['aide2', '{GUIDE}{SUITE}{SUITE}{SUITE}{ENVOI}PRINT "ok"\n'],
+  ['aide4', '{GUIDE}{SUITE}{SUITE}{SUITE}{SUITE}{SNAP}{ENVOI}'],
   ['taille', 'CLS:LOCATE 1,1:SIZE 1:PRINT "R1":SIZE 0\nLOCATE 3,5:SIZE 3:INVERSE 1:PRINT "XY";:SIZE 2:PRINT "Z":SIZE 0:INVERSE 0\nCOLOR 3:PAPER 4:UNDERLINE 1:PRINT "A BC":UNDERLINE 0:PAPER 0\nPLOT 10,10:INVERSE 1:SIZE 2:PRINT "Q":PLOT 11,11\n'],
   ['corr', 'PRINT "abc{CORR}{CORR}d"\nSIZE 2:PRINT "ABCDEFGHIJKLMNOPQRSTUV{CORR}{CORR}{CORR}"\n'],
   ['defile', 'FOR I=1 TO 30:PRINT I:NEXT\n'],
@@ -259,7 +267,17 @@ const extra = [
   ['tokens-renum', '1 PRINT "A":GOTO 3:REM GOTO 3\n2 ON X GOSUB 1,3,2,1,3,2,1,3,2,1,3,2,1,3,2,1,3,2,1,3,2,1,3,2\n3 IF A THEN 1 ELSE 2\nRENUM 10000,10000\nRENUM 1000,1000\n2 ON X GOSUB 1,3,2,1,3,2,1,3,2,1,3,2,1,3\nRENUM 1000,1000\nLIST\nEDIT 2000\nMEM\n'],
   ['chain', 'NEW\n10 A=5:A$="X":DIM T(3):T(2)=7:OPEN "D" FOR OUTPUT AS #1\n20 PRINT #1,"ok":GOSUB 30:CHAIN "P2"\n30 RETURN\nSAVE "P1"\nNEW\n10 PRINT A;A$;T(2):PRINT #1,"deux":CLOSE\n20 OPEN "D" FOR INPUT AS #1:LINE INPUT #1,B$:LINE INPUT #1,C$:CLOSE:?B$;C$\n30 CHAIN "ABSENT"\nSAVE "P2"\nLOAD "P1"\nRUN\nLIST\nCHAIN "P1"\nCHAIN "PC:X"\nMEM\n'],
   // (le simulateur ne décode pas tout le Vidéotex : on compare l'écran effacé après la page)
-  ['vdt', 'NEW\n10 COLOR 3:INVERSE 1:VDT "DEMO2":CLS:PRINT "fin";I:X=POINT(10,10)\n20 I=I+1:IF I<3 THEN 10\n30 PRINT "Couleur normale";X\nRUN\nVDT "ABSENT"\nVDT "PC:DEMO1"\nVDT "DEMO1.BAS"\n']
+  ['vdt', 'NEW\n10 COLOR 3:INVERSE 1:VDT "DEMO2":CLS:PRINT "fin";I:X=POINT(10,10)\n20 I=I+1:IF I<3 THEN 10\n30 PRINT "Couleur normale";X\nRUN\nVDT "ABSENT"\nVDT "PC:DEMO1"\nVDT "DEMO1.BAS"\n'],
+  // Fond de couleur sous un dessin : un délimiteur noir arrête la zone ; dessin différé (FLIP)
+  ['fond-dessin', 'CLS:PAPER 4:BOX 10,10,20,20,1,1:PLOT 78,40:PAPER 0:PLOT 30,10:LOCATE 1,8:PRINT "fin"\n'],
+  // Tableaux de chaînes et variables de deux caractères
+  ['variables2', 'NEW\n10 DIM N$(3),SC(2):N$(1)="Alice":N$(2)="Bob":SC(1)=12\n20 AB=5:A1$="x":FOR IX=1 TO 3:AB=AB+IX:NEXT IX\n30 PRINT N$(1);N$(2);SC(1);AB;A1$;ZZ;ZZ$;"|";LEN(N$(1))\n40 READ Q$(0),QQ:DATA "deux mots",7:PRINT Q$(0);QQ\n50 INPUT "Nom";NO$:PRINT NO$;MID$(NO$,2)\n60 IF AB>10 THEN PRINT "grand" ELSE PRINT "petit"\n70 ABC=1\nRUN\nTata\nMEM\nDIM N$(2)\nPRINT N$(4)\nX$(1)=5\nDIM T$(100)\nPRINT TO\n'],
+    // Musique en tâche de fond : le programme continue pendant la mélodie
+  ['play', 'NEW\n10 PLAY "T240 L8 CD#E-F. R G16 >C":PRINT "suite";TIMER\n20 A$="O2 C4":PLAY A$:PRINT TIMER\n30 PLAY "C D E":INPUT B$:PRINT B$\n40 PLAY "X"\nRUN\nabc\nPLAY "C":PRINT "ok"\nPLAY 3\n'],
+    // Texte en grand ; écran enregistré en page Vidéotex, puis réaffiché
+  ['big', 'CLS:BIG "Été 3615!",2,2,2:BIG "ok%(é)",0,30:BIG "xyz",40,30,3,0:BIG "A",0,0,9\nBIG "A"\n'],
+  ['savevdt', 'NEW\n10 PRINT "avant":CLS:COLOR 3:PRINT "Bonjour été"\n15 PAPER 2:BOX 10,10,30,20,1,1:BIG "OK",40,40\n20 SAVEVDT "ECRAN":CLS:PRINT "deux":SAVEVDT "DEUX"\nRUN\nCLS\nVDT "ECRAN"\nSAVEVDT "TROIS"\nFILES\n'],
+    ['flip', 'NEW\n10 CLS:FLIP\n20 FOR X=0 TO 60 STEP 6:BOX X,30,X+8,38,1,1:FLIP:BOX X,30,X+8,38,0,1:NEXT\n30 BOX 1,1,9,9:PLOT 40,40:FOR I=0 TO 79:PLOT I,60:NEXT:FLIP 0:PLOT 70,70\nRUN\n']
 ];
 for (const [nom, s] of extra) comparer(nom, s.startsWith('{') || s.startsWith('NEW') ? s : 'NEW\n' + s, null, false, [s]);
 

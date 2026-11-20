@@ -1,0 +1,10 @@
+10 REM Le ballon : FLIP, BIG et PLAY
+20 CLS: BIG "BALLON", 2, 2: LINE 0, 11, 79, 11
+30 PLAY "T180 L8 CEG>C<GEC4"
+40 X = 10: Y = 30: VX = 2: VY = 1: SC = 0: FLIP
+50 BOX X, Y, X + 3, Y + 2, 0, 1
+60 X = X + VX: Y = Y + VY
+70 IF X < 1 OR X > 75 THEN VX = -VX: SC = SC + 1: PLAY "O5 L16 CE"
+80 IF Y < 13 OR Y > 66 THEN VY = -VY: SC = SC + 1: PLAY "O4 L16 EC"
+90 BOX X, Y, X + 3, Y + 2, 1, 1: BIG STR$(SC), 58, 2: FLIP
+100 GOTO 50

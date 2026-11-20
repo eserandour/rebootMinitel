@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -29,6 +30,7 @@ typedef bool boolean;
 #define strcmp_P strcmp
 #define snprintf_P snprintf
 #define pgm_read_byte(p) (*(const unsigned char*)(p))
+#define pgm_read_word(p) (*(const unsigned short*)(p))
 
 #define HIGH 1
 #define LOW 0
@@ -199,34 +201,107 @@ struct Minitel {
     else if (a == 0x5C) { if (!modeGraphique) inverse = false; }
     else if (a == 0x5D) { if (!modeGraphique) inverse = true; }
   }
-  // Pour les pages Vidéotex (VDT "NOM") : positionnement (US rangée colonne), répétition
-  // du dernier caractère (REP n) et accents (SS2), le minimum pour les afficher lisiblement
-  int attenteUS = 0, rangeeUS = 0, attenteREP = 0;
-  bool ss2 = false;
-  byte dernier = ' ';
+  // Le décodeur du flux Vidéotex, comme la classe Ecran du Minitel virtuel (rebasic.js) :
+  // reBASIC envoie tout octet par octet (writeByte), le reste du croquis passe aussi par
+  // les fonctions de Minitel1B_Hard imitées plus bas.
+  int etat = 0, memo = 0, saut = 0;
+  std::string csi;
+  std::string dernierCar = " "; bool dernierGraph = false; int dernierPoints = 0; bool aDernier = false;
+  bool rangee0 = false; int avant0r = 0, avant0c = 0;
+  static const char* g2simple(int b) {
+    switch (b) {
+      case 0x23: return "£"; case 0x27: return "§"; case 0x2C: return "←"; case 0x2D: return "↑";
+      case 0x2E: return "→"; case 0x2F: return "↓"; case 0x30: return "°"; case 0x31: return "±";
+      case 0x38: return "÷"; case 0x3C: return "¼"; case 0x3D: return "½"; case 0x3E: return "¾";
+      case 0x6A: return "Œ"; case 0x7A: return "œ"; case 0x7B: return "ß";
+    }
+    return nullptr;
+  }
+  static std::string g2compose(int d, int l) {
+    const char* r = nullptr;
+    if (d == 0x41) r = (l == 'a') ? "à" : (l == 'e') ? "è" : (l == 'u') ? "ù" : nullptr;
+    else if (d == 0x42) r = (l == 'e') ? "é" : nullptr;
+    else if (d == 0x43) r = (l == 'a') ? "â" : (l == 'e') ? "ê" : (l == 'i') ? "î" : (l == 'o') ? "ô" : (l == 'u') ? "û" : nullptr;
+    else if (d == 0x48) r = (l == 'a') ? "ä" : (l == 'e') ? "ë" : (l == 'i') ? "ï" : (l == 'o') ? "ö" : (l == 'u') ? "ü" : nullptr;
+    else if (d == 0x4B) r = (l == 'c') ? "ç" : nullptr;
+    return r ? std::string(r) : std::string(1, (char) l);
+  }
+  void poserMemo(const std::string& car, bool g, int p) { dernierCar = car; dernierGraph = g; dernierPoints = p; aDernier = true; poser(car, g, p); }
+  void finCsi(byte b) {
+    int n = atoi(csi.c_str()); if (n <= 0) n = 1;
+    if (b == 0x41) { r = std::max(0, r - n); zoneIci(); }
+    else if (b == 0x42) { r = std::min(23, r + n); zoneIci(); }
+    else if (b == 0x43) { c = std::min(39, c + n); zoneIci(); }
+    else if (b == 0x44) { c = std::max(0, c - n); zoneIci(); }
+    else if (b == 0x4B) clearLineFromCursor();
+    else if (b == 0x48) {  // CSI rangée ; colonne H
+      int y = 1, x = 1; sscanf(csi.c_str(), "%d;%d", &y, &x);
+      rangee0 = false;
+      r = std::min(23, std::max(0, y - 1)); c = std::min(39, std::max(0, x - 1)); zoneIci();
+    }
+  }
   void writeByte(byte b) {
-    if (attenteUS) {
-      if (attenteUS == 2) { rangeeUS = b - 0x40; attenteUS = 1; return; }
-      attenteUS = 0;
-      if (rangeeUS >= 1 && rangeeUS <= 24) { r = rangeeUS - 1; c = (b - 0x41 < 0) ? 0 : (b - 0x41 > 39 ? 39 : b - 0x41); zoneIci(); }
+    switch (etat) {
+      case 1:  // Après ESC
+        etat = 0;
+        if (b == 0x5B) { etat = 2; csi.clear(); return; }
+        if (b == 0x39 || b == 0x3A || b == 0x3B) { saut = b - 0x38; etat = 8; return; }
+        if (b == 0x23) { saut = 2; etat = 8; return; }
+        attribut(b);
+        return;
+      case 2:  // Séquence CSI
+        if (b >= 0x30 && b <= 0x3F) { csi += (char) b; return; }
+        etat = 0; finCsi(b); return;
+      case 3: memo = b; etat = 4; return;  // US : rangée
+      case 4:  // US : colonne
+        etat = 0;
+        if (memo == 0x40) { if (!rangee0) { avant0r = r; avant0c = c; } rangee0 = true; return; }
+        rangee0 = false;
+        r = std::min(23, std::max(0, memo - 0x41)); c = std::min(39, std::max(0, b - 0x41)); zoneIci();
+        return;
+      case 5:  // SS2
+        if (b == 0x41 || b == 0x42 || b == 0x43 || b == 0x48 || b == 0x4B) { memo = b; etat = 6; return; }
+        etat = 0;
+        if (g2simple(b)) poserMemo(g2simple(b), false, 0);
+        return;
+      case 6: etat = 0; poserMemo(g2compose(memo, b), false, 0); return;
+      case 7:  // REP
+        etat = 0;
+        if (aDernier) { std::string car = dernierCar; bool g = dernierGraph; int p = dernierPoints; for (int i = 0; i < (b & 0x3F); i++) poser(car, g, p); }
+        return;
+      case 8: if (--saut <= 0) etat = 0; return;
+    }
+    switch (b) {
+      case 0x1B: etat = 1; return;
+      case 0x1F: etat = 3; return;
+      case 0x19: etat = 5; return;
+      case 0x0D: c = 0; zoneIci(); return;
+      case 0x0A:
+        if (rangee0) { rangee0 = false; r = avant0r; c = avant0c; zoneIci(); return; }
+        descendre(); return;
+      case 0x12: etat = 7; return;
+      case 0x08: if (c > 0) c--; zoneIci(); return;
+      case 0x09: c = std::min(39, c + 1); zoneIci(); return;
+      case 0x0B: r = std::max(0, r - 1); zoneIci(); return;
+      case 0x0C: effacer(); return;
+      case 0x0E: graphicMode(); return;
+      case 0x0F: textMode(); return;
+      case 0x1E: r = 0; c = 0; zoneIci(); return;
+      case 0x18: if (!rangee0) clearLineFromCursor(); return;
+      case 0x11: g_curseur = true; return;
+      case 0x14: g_curseur = false; return;
+      case 0x07: g_bips++; return;
+    }
+    if (b < 0x20) return;
+    if (modeGraphique) {
+      if (b == 0x5F) { poserMemo(" ", true, 63); return; }  // Le pavé plein (Minitel1B_Hard l'envoie ainsi)
+      if (b >= 0x40 && b < 0x60) return;
+      int p = ((b & 1) ? 32 : 0) | ((b & 2) ? 16 : 0) | ((b & 4) ? 8 : 0) | ((b & 8) ? 4 : 0) | ((b & 16) ? 2 : 0) | ((b & 64) ? 1 : 0);
+      poserMemo(" ", true, b == 0x7F ? 63 : p);
       return;
     }
-    if (attenteREP) { attenteREP = 0; for (int i = 0; i < b - 0x40 && i < 80; i++) writeByte(dernier); return; }
-    if (ss2) { ss2 = false; if (b >= 0x41 && b <= 0x4B) return; }  // Accent : la lettre suit seule
-    if (b == 0x1F) { attenteUS = 2; return; }
-    if (b == 0x12) { attenteREP = 1; return; }
-    if (b == 0x19) { ss2 = true; return; }
-    if (b >= 0x20 && !esc) dernier = b;
-    if (esc) { esc = false; attribut(b); return; }
-    if (b == 0x1B) { esc = true; return; }
-    if (b == 0x0D) { c = 0; zoneIci(); return; }
-    if (b == 0x0A) { descendre(); return; }
-    if (b == 0x08) { if (c > 0) c--; zoneIci(); return; }
-    if (b == 0x0C) { effacer(); return; }
-    if (b == 0x0E) { graphicMode(); return; }
-    if (b == 0x0F) { textMode(); return; }
-    if (b < 0x20) return;
-    poser(std::string(1, (char) b), false, 0);
+    if (b == 0x7F) return;
+    poserMemo(std::string(1, (char) b), false, 0);
   }
   void print(const char* s) {
     while (*s) {
@@ -237,7 +312,13 @@ struct Minitel {
       s += n;
     }
   }
-  String getString(unsigned long k) { std::string s; s += (char) (k >> 8); s += (char) (k & 0xFF); return String(s); }
+  String getString(unsigned long k) {  // Unicode -> UTF-8
+    std::string s;
+    if (k < 0x80) s += (char) k;
+    else if (k < 0x800) { s += (char) (0xC0 | (k >> 6)); s += (char) (0x80 | (k & 0x3F)); }
+    else { s += (char) (0xE0 | (k >> 12)); s += (char) (0x80 | ((k >> 6) & 0x3F)); s += (char) (0x80 | (k & 0x3F)); }
+    return String(s);
+  }
   unsigned long getKeyCode();
   void moveCursorXY(int x, int y) { c = x - 1; r = y - 1; zoneIci(); }
   void moveCursorUp(int n) { r -= n; if (r < 0) r = 0; zoneIci(); }
@@ -275,6 +356,8 @@ struct File {
   explicit operator bool() const { return f != nullptr || d != nullptr; }
   int read() { if (!f) return -1; int c = fgetc(f); return c == EOF ? -1 : c; }
   int available() { if (!f) return 0; int c = fgetc(f); if (c == EOF) return 0; ungetc(c, f); return 1; }
+  size_t write(uint8_t b) { if (!f) return 0; fputc(b, f); return 1; }
+  void flush() { if (f) fflush(f); }
   void print(const char* s) { if (f) fputs(s, f); }
   void print(char c) { if (f) fputc(c, f); }
   void print(unsigned n) { if (f) fprintf(f, "%u", n); }

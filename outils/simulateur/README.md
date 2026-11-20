@@ -6,7 +6,7 @@ Le simulateur compile le **vrai `Basic.ino`** du croquis avec un compilateur C++
 
 | Matériel | Dans le simulateur |
 |---|---|
-| Minitel | un écran de 40 × 24 cases en mode rouleau : texte, couleurs, fond, vidéo inverse, soulignement, clignotement, double hauteur et largeur, semi-graphiques, défilement. Les règles sont celles du STUM 1B : fond et soulignement validés par un espace (attributs de zone), double hauteur dessinée vers le haut et sans effet sur la rangée 1, taille, inversion et soulignement annulés par le semi-graphique |
+| Minitel | un écran de 40 × 24 cases en mode rouleau : texte, couleurs, fond, vidéo inverse, soulignement, clignotement, double hauteur et largeur, semi-graphiques, défilement. Les règles sont celles du STUM 1B : fond et soulignement validés par un espace (attributs de zone), double hauteur dessinée vers le haut et sans effet sur la rangée 1, taille, inversion et soulignement annulés par le semi-graphique. Comme sur un Minitel 1B, une case semi-graphique délimite aussi une zone, et le fond d'une case qui ne délimite rien est celui du dernier délimiteur à sa gauche, recalculé quand on récrit ce délimiteur (voir [`test-minitel/`](../test-minitel/)). reBASIC envoie des octets : le simulateur les décode comme le ferait le Minitel (positionnements US et CSI, répétition, accents SS2…) |
 | Clavier | un script de touches, ou le terminal en mode interactif |
 | Horloge DS3231 | le 14/11/2026 à 10:30:00 au lancement, puis le temps simulé |
 | Temps (`millis`) | avance d'une milliseconde à chaque instruction : `PAUSE`, `TIMER`, `TIME$` restent cohérents |

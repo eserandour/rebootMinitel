@@ -1,4 +1,4 @@
-# rebootMinitel (version 2026.11.20a)
+# rebootMinitel (version 2026.11.20b)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
@@ -246,6 +246,7 @@ Un tableau ne peut pas être réservé deux fois : faites les `DIM` dans le prem
 | `CLS` | Efface l'écran (et le dessin), et revient à l'affichage normal |
 | `LOCATE colonne,rangée` | Place le curseur (colonne 1 à 40, rangée 1 à 24) |
 | `VDT "NOM"` | Envoie au Minitel la page Vidéotex `NOM.VDT` de la carte SD, telle quelle (comme le [menu 2](#pages-vidéotex-menu-2)). L'écran n'est pas effacé avant (une page le fait d'habitude elle-même) ; ensuite, reBASIC revient à l'affichage normal, comme après `CLS`, et le curseur reste où la page l'a laissé (placez le texte avec `LOCATE`). `ANNULATION` et `SOMMAIRE` interrompent aussi l'envoi |
+| `SAVEVDT "NOM"` | Enregistre l'écran dans la page Vidéotex `NOM.VDT` de la carte SD (pour le menu 2 ou `VDT`). reBASIC ne garde pas l'écran en mémoire, mais ce qu'il envoie au Minitel : quand le programme contient `SAVEVDT`, `RUN` efface l'écran, puis tout ce que le programme affiche est aussi écrit dans le fichier `SAVEVDT.TMP` de la carte, qui repart de zéro à chaque `CLS`. `SAVEVDT` en fait une copie, qui rejoue tout ce qui a été affiché depuis le dernier `CLS`. Après la fin du programme, `SAVEVDT "NOM"` tapé au clavier enregistre encore son dernier écran. |
 
 Couleurs, fond, inversion, clignotement, soulignement et taille : voir [Attributs d'affichage](#attributs-daffichage).
 
@@ -264,7 +265,7 @@ Couleurs, fond, inversion, clignotement, soulignement et taille : voir [Attribut
 | `DATA valeur,valeur…` | Données du programme : nombres, chaînes avec ou sans guillemets (sans guillemets, elles passent en majuscules) |
 | `READ v[,v…]` | Lit les données suivantes des lignes `DATA` |
 | `RESTORE [n]` | Repart du premier `DATA` du programme, ou de la ligne n |
-| `DIM A(n)` | Tableau A d'indices 0 à n. Sans `DIM`, un tableau a les indices 0 à 10. |
+| `DIM A(n)` | Tableau A d'indices 0 à n ; `DIM A$(n)` : tableau de chaînes. Sans `DIM`, un tableau a les indices 0 à 10. Plusieurs tableaux : `DIM A(5), NO$(9)`. |
 | `REM …` ou `' …` | Commentaire jusqu'à la fin de la ligne |
 | `END` | Fin du programme |
 | `STOP` | Arrête le programme |
@@ -274,10 +275,23 @@ Couleurs, fond, inversion, clignotement, soulignement et taille : voir [Attribut
 | Instruction | Rôle |
 |---|---|
 | `BEEP` | Bip du Minitel |
-| `SOUND fréquence,durée` | Son sur le buzzer (31 à 20000 Hz, durée en ms) |
+| `SOUND fréquence,durée` | Son sur le buzzer (31 à 20000 Hz, durée en ms). Le programme attend la fin du son. |
+| `PLAY "mélodie"` | Joue une mélodie sur le buzzer **pendant que le programme continue** (voir ci-dessous). Un `PLAY` attend la fin du précédent ; `PLAY` seul arrête la musique. |
 | `PAUSE durée` | Attente en millisecondes (`ANNULATION` interrompt aussi le programme pendant l'attente) |
 
-**Dessin** : `PLOT` et `LINE`, voir [Dessin](#dessin).
+La mélodie de `PLAY` s'écrit en lettres, comme sur les micro-ordinateurs des années 1980 :
+
+| Dans la mélodie | Effet |
+|---|---|
+| `A` à `G` | Une note (`C` do … `B` si), suivie de `#` ou `+` (dièse) ou `-` (bémol), d'une durée (`1` ronde, `2` blanche, `4` noire, `8` croche… `64`) et de points (`.` : durée × 1,5) |
+| `R` ou `P` | Un silence (même durée) |
+| `O n` | L'octave, de 0 à 7 (4 au départ : le la de l'octave 4 fait 440 Hz) ; `<` et `>` descendent ou montent d'une octave |
+| `L n` | La durée des notes écrites sans durée (4 au départ) |
+| `T n` | Le tempo, en noires par minute (32 à 255, 120 au départ) |
+
+Une note sonne les 7/8 de sa durée, pour que deux notes semblables restent distinctes. La mélodie est vérifiée en entier par `PLAY` (« Valeur incorrecte » avant que la musique commence). À la fin du programme, reBASIC attend la fin de la mélodie (`ANNULATION` l'arrête). `SOUND` arrête la mélodie : le buzzer ne joue qu'un son à la fois. `O`, `L` et `T` gardent leur valeur d'un `PLAY` à l'autre ; `RUN` les remet au départ.
+
+**Dessin** : `PLOT`, `LINE`, `BOX`, `CIRCLE`, `BIG` et `FLIP`, voir [Dessin](#dessin).
 **Fichiers** : `OPEN`, `CLOSE`, `PRINT #`, `INPUT #`, `LINE INPUT #`, voir [Fichiers de données](#fichiers-de-données).
 **Broches** : `PINMODE`, `DWRITE`, `AWRITE`, voir [Broches de l'Arduino](#broches-de-larduino).
 
@@ -380,9 +394,12 @@ Pour les autres touches, `KEY` donne le code (Unicode) du caractère : `A` 65, `
 
 | Type | Noms |
 |---|---|
-| Nombres (environ 7 chiffres significatifs) | `A` à `Z` |
-| Chaînes (32 caractères au plus sur le Mega, 78 sur l'ESP32) | `A$` à `Z$` |
-| Tableaux de nombres | `A(n)` à `Z(n)` |
+| Nombres (environ 7 chiffres significatifs) | `A` à `Z`, et les noms de deux caractères : une lettre, puis une lettre ou un chiffre (`PV`, `X1`) |
+| Chaînes (32 caractères au plus sur le Mega, 78 sur l'ESP32) | `A$` à `Z$`, `NO$`, `X1$`… |
+| Tableaux de nombres | `A(n)`, `PV(n)`… |
+| Tableaux de chaînes | `A$(n)`, `NO$(n)`… |
+
+Un nom a deux caractères au plus (`SCORE = 1` est une erreur de syntaxe), et ne peut pas être un mot-clé (`IF`, `TO`, `ON`, `OR`). `A`, `A$`, `A()` et `A$()` sont quatre variables différentes. Les variables `A` à `Z` et `A$` à `Z$` ont leur place réservée ; les autres variables et les tableaux sont rangés dans la mémoire du programme (voir [Limites](#limites)).
 
 | Opérateurs | |
 |---|---|
@@ -402,9 +419,13 @@ L'écran est une grille de **80 × 72 points** (x de 0 à 79, y de 0 à 71, orig
 | `BOX x1,y1,x2,y2[,c[,p]]` | Trace un rectangle (l'efface si c = 0 ; plein si p = 1) |
 | `CIRCLE x,y,r[,c[,p]]` | Trace un cercle de centre (x,y) et de rayon r (l'efface si c = 0 ; plein si p = 1) |
 | `POINT(x,y)` | -1 si le point est allumé |
+| `BIG "TEXTE",x,y[,t[,c]]` | Écrit un texte en grandes lettres de 5 × 7 points, coin supérieur gauche en (x, y) ; chaque point devient un carré de t × t points (t de 1 à 8). Les lettres remplacent ce qu'il y a dessous (pour récrire un score) ; avec c = 0, le texte est effacé. Minuscules et lettres accentuées s'écrivent en majuscules sans accent ; la police a les chiffres, les lettres et `! ' - . : ? * / , + = ( ) < > %`. |
+| `FLIP [n]` | Dessin différé : après `FLIP`, `PLOT`, `LINE`, `BOX`, `CIRCLE` et `BIG` ne dessinent plus qu'en mémoire, et chaque `FLIP` envoie d'un coup les cases qui ont changé depuis le précédent (une case effacée puis redessinée à l'identique n'est pas envoyée). `FLIP 0` envoie ce qui a changé et revient au dessin immédiat, comme `CLS` et la fin du programme. |
 
 - Les points du Minitel sont 1,25 fois plus larges que hauts (matrice de 8 × 10 découpée en 2 × 3). Le rayon de `CIRCLE` est donc mesuré horizontalement, et le cercle s'étend sur r × 1,25 points verticalement, pour paraître rond.
 - La couleur des points est celle fixée par `COLOR`, le fond de la case celui fixé par `PAPER`. Une case n'a qu'une couleur de points et une couleur de fond : un nouveau tracé dans une case lui donne les couleurs en cours. Pour peindre une grande surface, effacez un rectangle plein avec le fond voulu : `PAPER 4: BOX 0,0,79,35,0,1`.
+- Une case semi-graphique délimite une **zone de fond** : sur le Minitel, les cases qui la suivent sur la rangée et ne délimitent rien (cases vides, lettres) prennent son fond, au moment de l'affichage, jusqu'au délimiteur suivant (constaté sur un Minitel 1B). Pour qu'un dessin sur un fond de couleur ne colore pas toute la fin de sa rangée, reBASIC pose une case semi-graphique vide sur fond noir juste après chaque suite de cases dessinées, sauf si la case suivante est déjà une case dessinée par reBASIC. Un texte écrit juste à droite d'un dessin sur fond de couleur est donc effacé : laissez une case libre entre les deux.
+- Avec `FLIP`, les cases sont envoyées avec les couleurs en cours au moment du `FLIP` (pour dessiner en plusieurs couleurs, un `FLIP` après chaque couleur), et le texte (`PRINT`) s'affiche toujours tout de suite. Sur l'Arduino Mega, reBASIC note jusqu'à 64 cases entre deux `FLIP` ; au-delà, il les envoie sans attendre (960 sur l'ESP32).
 - `CLS` efface le dessin.
 - Les points sont gardés en mémoire pour pouvoir en allumer plusieurs dans une même case. Cette mémoire ne suit pas le défilement de l'écran : mieux vaut dessiner après un `CLS` et placer le texte avec `LOCATE`.
 - La case en bas à droite n'est pas dessinée, car y écrire ferait défiler l'écran.
@@ -486,20 +507,21 @@ Erreur de syntaxe en ligne 10
 
 Ces tailles se règlent au début de `Basic.ino` (`BAS_MEM_SIZE`, `BAS_STR_MAX`…), selon la mémoire disponible.
 
-- **Le programme et les tableaux se partagent la mémoire** : le programme en occupe le début, les tableaux la fin, à raison de 4 octets par case. Un petit programme laisse donc la place à de grands tableaux (576 cases sans programme, sur le Mega), et inversement. `MEM` affiche la place qui reste.
+- **Le programme et les tableaux se partagent la mémoire** : le programme en occupe le début, les tableaux la fin, à raison de 4 octets par case de nombre et de 36 octets par case de chaîne (80 sur l'ESP32), plus 8 octets par tableau. Une variable de deux caractères y prend sa place (12 octets pour un nombre, 44 pour une chaîne sur le Mega) dès qu'elle reçoit une valeur. Un petit programme laisse donc la place à de grands tableaux (574 cases sans programme, sur le Mega), et inversement. `MEM` affiche la place qui reste.
 - **Les mots-clés sont « tokenisés »** : dans la mémoire, chacun n'occupe qu'un octet (`PRINT`, `GOTO`, `IF`, `FOR`…) ou deux (les moins courants, comme `MINUTE` ou `PINMODE`), quelle que soit sa longueur. Un programme prend ainsi environ 20 % de place en moins (de 12 à 40 % pour les programmes du dossier `exemples/`). Rien ne change à l'écran : `LIST`, `EDIT` et `SAVE` rendent le texte tel qu'il a été tapé, et les fichiers `.BAS` restent de simples fichiers texte.
-- Si une ligne tapée au clavier ne tient plus, les tableaux sont oubliés pour lui faire de la place (comme le ferait `RUN`) ; jamais pendant l'exécution d'un programme.
+- Si une ligne tapée au clavier ne tient plus, les tableaux et les variables de deux caractères sont oubliés pour lui faire de la place (comme le ferait `RUN`) ; jamais pendant l'exécution d'un programme.
 
 - `TIMER` perd de la précision après environ 4 h 30 (nombres sur 7 chiffres significatifs).
 - Une boucle `WHILE` sans `WEND` n'est signalée que si sa condition est fausse.
 
 ### Exemples
 
-Le dossier [`exemples/`](exemples/) contient dix programmes et deux pages Vidéotex (`DEMO1.VDT` et `DEMO2.VDT`, pour le [menu 2](#pages-vidéotex-menu-2)). Les programmes sont enregistrés au format de `SAVE` : on peut les copier sur la carte microSD et les charger avec `LOAD "BALLE"`, les ouvrir dans le [Minitel virtuel](#minitel-virtuel) (bouton « Ouvrir… », ou directement dans sa liste), ou les lancer dans le [simulateur](outils/simulateur/). Ils viennent presque tous du tutoriel, qui les explique en détail ; « Minitel Matin » illustre les [attributs d'affichage](#attributs-daffichage).
+Le dossier [`exemples/`](exemples/) contient onze programmes et deux pages Vidéotex (`DEMO1.VDT` et `DEMO2.VDT`, pour le [menu 2](#pages-vidéotex-menu-2)). Les programmes sont enregistrés au format de `SAVE` : on peut les copier sur la carte microSD et les charger avec `LOAD "BALLE"`, les ouvrir dans le [Minitel virtuel](#minitel-virtuel) (bouton « Ouvrir… », ou directement dans sa liste), ou les lancer dans le [simulateur](outils/simulateur/). Ils viennent presque tous du tutoriel, qui les explique en détail ; « Minitel Matin » illustre les [attributs d'affichage](#attributs-daffichage).
 
 | Fichier | Programme |
 |---|---|
 | [`BALLE.BAS`](exemples/BALLE.BAS) | **La balle qui rebondit** — Une balle rebondit dans un rectangle fermé : on l'efface, on la déplace, on la redessine. |
+| [`BALLON.BAS`](exemples/BALLON.BAS) | **Le ballon** — Un ballon rebondit sans clignoter (`FLIP`), le score s'affiche en grand (`BIG`) et chaque rebond sonne pendant que le ballon continue (`PLAY`). |
 | [`CERCLES.BAS`](exemples/CERCLES.BAS) | **Cercles** — Rectangles et cercles, vides et pleins (`BOX`, `CIRCLE`). |
 | [`HORLOGE.BAS`](exemples/HORLOGE.BAS) | **L'horloge** — La date et l'heure, centrées sur l'écran et mises à jour en permanence. |
 | [`LUNE.BAS`](exemples/LUNE.BAS) | **Au clair de la lune** — Une mélodie rangée dans des `DATA`, jouée sur le buzzer avec `SOUND`. |
@@ -654,4 +676,5 @@ Le dossier [`outils/`](outils/) contient, pour l'ordinateur :
 - le **Minitel virtuel** : rebootMinitel et reBASIC dans un navigateur, et la bibliothèque JavaScript `rebasic.js` (voir [Minitel virtuel](#minitel-virtuel)) ;
 - la **passerelle** avec le PC : enregistrer et ouvrir des programmes sur l'ordinateur depuis le Minitel (voir [Programmes sur le PC](#programmes-sur-le-pc)) ;
 - un **simulateur** de reBASIC, qui compile le vrai `Basic.ino` sur PC : exécuter un programme, utiliser reBASIC dans un terminal, produire des images d'écran ;
+- un **test pour le vrai Minitel** (`outils/test-minitel/ZONES.BAS`) : il montre comment votre Minitel applique les zones de fond et de soulignement, l'effacement de fin de rangée et les attributs après un positionnement, pour vérifier les règles suivies par le simulateur et le Minitel virtuel ;
 - la **fabrication du tutoriel** « Programmer en reBASIC » (ODT et PDF), dont tous les exemples sont exécutés dans le simulateur.

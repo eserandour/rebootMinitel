@@ -205,7 +205,7 @@ Une ligne fait au plus **78 caractères**, numéro compris.
 
 ## Ranger des nombres
 
-Une **variable** est une case de la mémoire qui porte un nom et contient une valeur. En reBASIC, les variables numériques s'appellent par **une seule lettre**, de `A` à `Z` :
+Une **variable** est une case de la mémoire qui porte un nom et contient une valeur. En reBASIC, le nom d'une variable numérique a **une ou deux** lettres ou chiffres, en commençant par une lettre : `A`, `Z`, `PV`, `X1`… Pour commencer, une seule lettre suffit :
 
 ```basic
 10 A = 5
@@ -220,13 +220,22 @@ Une **variable** est une case de la mémoire qui porte un nom et contient une va
 - `A = A * 10` calcule `A * 10` avec l'ancienne valeur de `A` (5), puis range le résultat (50) dans `A`.
 - Une variable qui n'a encore rien reçu vaut 0.
 
+Avec deux caractères, les noms deviennent plus parlants : `SC` pour le score, `PV` pour les points de vie, `X1` et `X2` pour deux positions.
+
+```basic
+10 SC = 0: PV = 3
+20 SC = SC + 150: PV = PV - 1
+30 PRINT "Score : "; SC; "  Vies : "; PV
+```
+<!--ecran-->
+
 ::: {custom-style="Attention"}
-**Attention** — Les noms de variables n'ont qu'**une lettre**. `SCORE = 10` ou `AB = 3` provoquent une erreur de syntaxe. Choisissez des lettres parlantes : `S` pour le score, `V` pour les vies, `N` pour un nombre…
+**Attention** — Un nom a **deux caractères au plus** : `SCORE = 10` provoque une erreur de syntaxe. Un nom ne peut pas non plus être un mot de reBASIC (`IF`, `TO`, `ON`, `OR`). Les variables `A` à `Z` ont leur place réservée ; celles de deux caractères prennent un peu de la mémoire du programme (12 octets chacune) dès qu'elles reçoivent une valeur.
 :::
 
 ## Ranger du texte
 
-Une variable de **chaîne** (de caractères) porte un nom suivi d'un dollar : `A$` à `Z$`.
+Une variable de **chaîne** (de caractères) porte un nom suivi d'un dollar : `A$` à `Z$`, ou `NO$`, `V2$`…
 
 ```basic
 10 N$ = "Marianne"
@@ -743,8 +752,24 @@ Un **tableau** est une variable qui contient plusieurs valeurs numérotées. `DI
 
 - Sans `DIM`, un tableau a automatiquement les indices 0 à 10.
 - Un indice en dehors des limites provoque l'erreur « Indice hors limites ».
-- Il n'existe que des tableaux de **nombres**, à une dimension.
-- Les tableaux se partagent la mémoire avec le programme : 2304 octets sur l'Arduino Mega (20 384 sur ESP32), à raison de 4 octets par case. Plus le programme est court, plus les tableaux peuvent être grands : sans programme, il y a la place pour 576 cases. `MEM` dit ce qui reste.
+- Les tableaux n'ont qu'une dimension. Leur nom suit les mêmes règles que les variables : `N()`, `SC()`, `T1()`…
+- Les tableaux se partagent la mémoire avec le programme : 2304 octets sur l'Arduino Mega (20 384 sur ESP32), à raison de 4 octets par case, plus 8 octets par tableau. Plus le programme est court, plus les tableaux peuvent être grands : sans programme, il y a la place pour 574 cases. `MEM` dit ce qui reste.
+
+## Des tableaux de chaînes
+
+Un tableau peut aussi contenir des **chaînes** : `DIM J$(6)` crée les cases `J$(0)` à `J$(6)`.
+
+```basic
+10 DIM J$(6)
+20 FOR I = 0 TO 6: READ J$(I): NEXT
+30 DATA "lundi", "mardi", "mercredi", "jeudi"
+40 DATA "vendredi", "samedi", "dimanche"
+50 INPUT "Numéro du jour (1 à 7)"; N
+60 PRINT "C'est "; J$(N - 1)
+```
+<!--ecran keys="3\n"-->
+
+Chaque case de chaîne occupe toute la place d'une chaîne, qu'elle soit pleine ou vide : 36 octets sur l'Arduino Mega (80 sur ESP32). Un tableau de 10 chaînes prend donc près de 400 octets sur le Mega.
 
 ## Compter avec un tableau : lancers de dé
 
@@ -1053,6 +1078,33 @@ Les notes de la gamme ont des fréquences précises (le *la* du diapason vaut 44
 
 Pour monter d'une octave, on double la fréquence ; pour descendre, on la divise par deux.
 
+## De la musique en tâche de fond : PLAY
+
+`SOUND` fait attendre le programme. `PLAY` joue toute une mélodie, écrite en lettres, **pendant que le programme continue** : un jeu peut avoir sa musique pendant qu'on joue.
+
+```basic
+10 PLAY "T120 L4 CCCD E2D2 CEDD C1"
+20 FOR I = 1 TO 10
+30 PRINT "Le programme continue"; I
+40 PAUSE 300
+50 NEXT
+```
+<!--test-->
+
+| Dans la mélodie | Effet |
+|---|---|
+| `A` à `G` | une note (`C` do, `D` ré, `E` mi, `F` fa, `G` sol, `A` la, `B` si), suivie de `#` ou `+` (dièse) ou `-` (bémol) |
+| un nombre après la note | sa durée : `1` ronde, `2` blanche, `4` noire, `8` croche… jusqu'à `64` ; un point (`.`) l'allonge de moitié |
+| `R` ou `P` | un silence (même durée) |
+| `O n` | l'octave, de 0 à 7 (4 au départ ; le la de l'octave 4 fait 440 Hz) ; `<` et `>` descendent ou montent d'une octave |
+| `L n` | la durée des notes écrites sans durée (4 au départ) |
+| `T n` | le tempo, en noires par minute (de 32 à 255, 120 au départ) |
+
+- Un deuxième `PLAY` attend la fin du premier, puis rend la main aussitôt : plusieurs `PLAY` à la suite jouent un long air.
+- `PLAY` seul arrête la musique. `SOUND` aussi, car le buzzer ne joue qu'un son à la fois.
+- À la fin du programme, reBASIC attend la fin de la mélodie (`ANNULATION` l'arrête).
+- Une lettre inconnue dans la mélodie provoque l'erreur « Valeur incorrecte », avant que la musique commence.
+
 # Dessiner
 
 ## La grille de points
@@ -1133,6 +1185,8 @@ Les points du Minitel ne sont pas carrés : un caractère occupe une matrice de 
 
 `COLOR` donne la couleur des **points**, et `PAPER` celle du **fond** de la case : chaque case semi-graphique a donc deux couleurs. Contrairement au texte, le fond s'applique tout de suite, sans attendre d'espace. Sur le Minitel 1B, ces couleurs apparaissent en gris.
 
+Une case semi-graphique est aussi un **délimiteur** : sur le Minitel, les cases vides qui la suivent sur la rangée prennent son fond. Pour qu'une case dessinée sur un fond de couleur ne colore pas toute la fin de sa rangée, reBASIC pose donc une case noire juste après (sauf si la case suivante est déjà dessinée). Un texte écrit juste à droite d'un dessin sur fond de couleur est ainsi effacé : laissez une case libre entre les deux.
+
 ```basic
 10 CLS
 20 FOR I = 1 TO 7
@@ -1177,6 +1231,44 @@ Pour animer, on efface l'objet, on change sa position, on le redessine. Ici, la 
 <!--ecran rows=24 limit=6004-->
 
 `U` et `V` sont les vitesses horizontale et verticale : quand la balle touche un bord, la vitesse change de signe. Le rectangle s'arrête à y = 68, au-dessus de la dernière rangée : avec `BOX 0, 0, 79, 71`, son coin en bas à droite manquerait, car cette case n'est jamais dessinée.
+
+## Animer plus vite : FLIP
+
+Le Minitel reçoit environ 480 caractères par seconde. Quand on déplace un objet, l'effacer puis le redessiner envoie deux fois les mêmes cases, et l'on voit l'objet clignoter. Après `FLIP`, les instructions de dessin ne travaillent plus qu'**en mémoire** ; le `FLIP` suivant envoie d'un coup les cases qui ont changé depuis le précédent. Une case effacée puis redessinée à l'identique n'est pas envoyée du tout.
+
+```basic
+10 CLS: FLIP
+20 FOR X = 0 TO 66 STEP 2
+30 BOX X - 2, 30, X + 11, 41, 0, 1
+40 BOX X, 30, X + 11, 41, 1, 1
+50 FLIP
+60 NEXT
+70 FLIP 0: LOCATE 1, 1: PRINT "Arrivé !"
+```
+<!--ecran rows=24-->
+
+- `FLIP` (ou `FLIP 1`) passe en dessin différé et envoie ce qui a changé ; `FLIP 0` envoie ce qui a changé et revient au dessin immédiat. `CLS` et la fin du programme reviennent aussi au dessin immédiat.
+- Le texte (`PRINT`) s'affiche toujours tout de suite.
+- Les cases sont envoyées avec les couleurs en cours **au moment du `FLIP`** : pour dessiner en plusieurs couleurs, faites un `FLIP` après chaque couleur.
+- Sur l'Arduino Mega, reBASIC note jusqu'à 64 cases entre deux `FLIP` ; au-delà, il les envoie sans attendre.
+
+## Écrire en grand : BIG
+
+`BIG "TEXTE", x, y` écrit un texte en grandes lettres de 5 × 7 points, dont le coin en haut à gauche est au point (x, y). Un quatrième paramètre agrandit chaque point : `BIG "TEXTE", x, y, 2` donne des lettres de 10 × 14 points.
+
+```basic
+10 CLS
+20 BIG "3615", 4, 3, 3
+30 BIG "MINITEL", 18, 30
+40 FOR S = 0 TO 99
+50 BIG STR$(S), 30, 50, 2
+60 NEXT
+```
+<!--ecran rows=24-->
+
+- Les lettres **remplacent** ce qu'il y a dessous : on peut récrire un score au même endroit, comme à la ligne 50. Avec un cinquième paramètre égal à 0 (`BIG "TEXTE", x, y, 1, 0`), le texte est effacé.
+- Les minuscules et les lettres accentuées s'écrivent en majuscules sans accent. La police a les chiffres, les lettres et `! ' - . : ? * / , + = ( ) < > %`.
+- Chaque lettre prend 6 points de large (avec l'espace qui la suit) : 13 lettres tiennent sur la largeur de l'écran, 6 en taille 2.
 
 ## Lire l'écran : POINT
 
@@ -1381,6 +1473,22 @@ Un fichier `.VDT` contient une page Minitel toute faite : les octets que le Mini
 - L'écran n'est pas effacé avant la page (une page commence d'habitude par l'effacer elle-même).
 - Après la page, reBASIC revient à l'affichage normal, comme après `CLS`. Le curseur reste là où la page l'a laissé : placez votre texte avec `LOCATE`.
 - `ANNULATION` et `SOMMAIRE` interrompent aussi l'envoi de la page.
+
+## Enregistrer l'écran : SAVEVDT
+
+`SAVEVDT "NOM"` fait l'inverse : il enregistre l'écran dans la page `NOM.VDT` de la carte SD. On la retrouve dans le menu 2, ou dans un programme avec `VDT "NOM"`.
+
+```basic
+10 CLS: COLOR 6: BIG "3615", 17, 8, 2
+20 LOCATE 12, 15: PRINT "Mon premier écran"
+30 BOX 2, 2, 77, 66
+40 SAVEVDT "ECRAN"
+```
+<!--ecran rows=24-->
+
+- reBASIC ne garde pas l'écran en mémoire : il garde ce qu'il envoie au Minitel. Quand le programme contient `SAVEVDT`, `RUN` commence par effacer l'écran, puis tout ce que le programme affiche est aussi écrit sur la carte SD (dans le fichier `SAVEVDT.TMP`), à partir du dernier `CLS`.
+- Après la fin du programme, on peut encore taper `SAVEVDT "NOM"` pour enregistrer son dernier écran.
+- La page enregistrée rejoue tout ce qui a été affiché depuis le `CLS` : une animation y est rejouée en entier.
 
 ## Renuméroter : RENUM
 
@@ -1854,17 +1962,17 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 
 | Domaine | Instructions |
 |---|---|
-| Affichage | `PRINT` (`?`) avec `;` `,` `TAB(n)` · `CLS` · `LOCATE col,rang` · `VDT "NOM"` (page Vidéotex) |
+| Affichage | `PRINT` (`?`) avec `;` `,` `TAB(n)` · `CLS` · `LOCATE col,rang` · `VDT "NOM"` (page Vidéotex) · `SAVEVDT "NOM"` (enregistre l'écran) |
 | Attributs | `COLOR n` · `PAPER n` · `INVERSE n` · `FLASH n` · `UNDERLINE n` · `SIZE n` |
 | Saisie | `INPUT ["texte";] v,…` |
-| Variables | `[LET] v = expr` · `DIM A(n)` |
+| Variables | `[LET] v = expr` · `DIM A(n)` · `DIM A$(n)` |
 | Décisions | `IF … THEN … [ELSE …]` · `GOTO n` · `ON x GOTO n1,…` |
 | Boucles | `FOR v=a TO b [STEP c]` … `NEXT [v]` · `WHILE cond` … `WEND` |
 | Sous-programmes | `GOSUB n` · `RETURN` · `ON x GOSUB n1,…` |
 | Données | `DATA` · `READ v,…` · `RESTORE [n]` |
 | Fin, commentaire | `END` · `STOP` · `REM` · `'` |
-| Son, attente | `BEEP` · `SOUND f,ms` · `PAUSE ms` |
-| Dessin | `PLOT x,y[,c]` · `LINE x1,y1,x2,y2[,c]` · `BOX x1,y1,x2,y2[,c[,p]]` · `CIRCLE x,y,r[,c[,p]]` |
+| Son, attente | `BEEP` · `SOUND f,ms` · `PLAY "mélodie"` · `PAUSE ms` |
+| Dessin | `PLOT x,y[,c]` · `LINE x1,y1,x2,y2[,c]` · `BOX x1,y1,x2,y2[,c[,p]]` · `CIRCLE x,y,r[,c[,p]]` · `BIG "texte",x,y[,t[,c]]` · `FLIP [n]` |
 | Fichiers | `OPEN "N" FOR INPUT/OUTPUT/APPEND AS #n` · `PRINT #n` · `INPUT #n` · `LINE INPUT #n` · `CLOSE` |
 | Broches | `PINMODE b,m` · `DWRITE b,v` · `AWRITE b,v` |
 
@@ -1893,10 +2001,10 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 
 | Élément | Limite |
 |---|---|
-| Programme et tableaux | 2 304 octets en tout (un mot-clé = 1 ou 2 octets, une case de tableau = 4 octets) |
+| Programme et tableaux | 2 304 octets en tout (un mot-clé = 1 ou 2 octets, une case de tableau = 4 octets, une case de tableau de chaînes = 36 octets, plus 8 octets par tableau et par variable de deux caractères) |
 | Longueur d'une ligne | 78 caractères |
 | Longueur d'une chaîne | 32 caractères (lettre accentuée = 2) |
-| Variables | `A`–`Z`, `A$`–`Z$`, tableaux `A()`–`Z()` |
+| Variables | une lettre, ou une lettre et une lettre ou un chiffre (`A`, `PV`, `X1`, `NO$`) ; tableaux de nombres et de chaînes |
 | Imbrications | 12 `GOSUB`, 8 `FOR`, 6 `WHILE`, 6 niveaux de parenthèses |
 | Écran texte | 40 colonnes × 24 rangées |
 | Écran graphique | 80 × 72 points |

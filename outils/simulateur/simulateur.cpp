@@ -62,8 +62,13 @@ void ajouterTouches(const std::string& t)
     }
     if (c == '\r') { i++; continue; }
     if (c == '\n') { g_touches.push_back({0x0D, false, 0}); i++; continue; }
-    if (c >= 0xC0 && i + 1 < t.size()) {  // Lettre accentuée (2 octets en UTF-8)
-      g_touches.push_back({(unsigned long) ((c << 8) | (unsigned char) t[i + 1]), false, 0});
+    if (c >= 0xE0 && i + 2 < t.size()) {  // Caractère sur 3 octets en UTF-8 (flèches...) : son code Unicode, comme getKeyCode
+      g_touches.push_back({(unsigned long) (((c & 0x0F) << 12) | (((unsigned char) t[i + 1] & 0x3F) << 6) | ((unsigned char) t[i + 2] & 0x3F)), false, 0});
+      i += 3;
+      continue;
+    }
+    if (c >= 0xC0 && i + 1 < t.size()) {  // Lettre accentuée (2 octets en UTF-8) : son code Unicode
+      g_touches.push_back({(unsigned long) (((c & 0x1F) << 6) | ((unsigned char) t[i + 1] & 0x3F)), false, 0});
       i += 2;
       continue;
     }
