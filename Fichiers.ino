@@ -37,6 +37,57 @@ const byte FICH_NOM_MAX = 13;   // Noms 8.3 sur l'ATmega (12 caractères)
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////////
+// Affichage des nombres, sans objet String (pas d'allocation dans le tas, qui se
+// morcelle vite dans les 8 Ko de mémoire vive de l'Arduino Mega)
+//////////////////////////////////////////////////////////////////////////////////////
+
+byte fichNombreEnTexte(unsigned long n, char* s)
+{
+  // Ecrit n en décimal dans s (11 octets au moins). Renvoie le nombre de chiffres.
+  char tmp[10];
+  byte i = 0;
+  do {
+    tmp[i++] = '0' + (n % 10);
+    n /= 10;
+  } while (n > 0);
+  byte len = i;
+  while (i > 0) *s++ = tmp[--i];
+  *s = 0;
+  return len;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void fichAscii(const char* s)
+{
+  // Affiche un texte fait de chiffres et de signes simples (caractères du jeu G0)
+  while (*s) minitel.printChar(*s++);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void fichNombre(unsigned long n)
+{
+  char s[11];
+  fichNombreEnTexte(n, s);
+  fichAscii(s);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void fichPages(int page, int pages)
+{
+  // « page/pages », aligné à droite de la première rangée (s'il y a plusieurs pages)
+  if (pages <= 1) return;
+  char p[24];
+  byte n = fichNombreEnTexte(page + 1, p);
+  p[n++] = '/';
+  n += fichNombreEnTexte(pages, p + n);
+  minitel.moveCursorXY(41 - n, 1);
+  fichAscii(p);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
 
 boolean fichSuivant(const char* courant, char* resultat, unsigned long* taille)
 {
@@ -123,9 +174,10 @@ void fichTitre(const __FlashStringHelper* titre)
 void fichTaille(unsigned long taille, byte rangee)
 {
   // La taille, alignée à droite de l'écran
-  String t = String(taille);
-  minitel.moveCursorXY(41 - t.length(), rangee);
-  minitel.print(t);
+  char t[11];
+  byte n = fichNombreEnTexte(taille, t);
+  minitel.moveCursorXY(41 - n, rangee);
+  fichAscii(t);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -136,13 +188,9 @@ void fichListe(int page, int nombre)
   int pages = (nombre + FICH_PAR_PAGE - 1) / FICH_PAR_PAGE;
   fichTitre(F(" Carte SD "));
   minitel.moveCursorXY(12, 1);
-  minitel.print(String(nombre));
+  fichNombre(nombre);
   minitel.print(nombre == 1 ? F(" fichier") : F(" fichiers"));
-  if (pages > 1) {
-    String p = String(page + 1) + "/" + String(pages);
-    minitel.moveCursorXY(41 - p.length(), 1);
-    minitel.print(p);
-  }
+  fichPages(page, pages);
   if (nombre == 0) {
     minitel.moveCursorXY(1, 4);
     minitel.print(F("La carte SD est vide, absente ou"));
@@ -161,9 +209,16 @@ void fichListe(int page, int nombre)
     minitel.printChar('A' + i);
     minitel.attributs(FOND_NORMAL);
     minitel.print(F(" "));
-    String n = nom;
-    if (n.length() > 26) n = n.substring(0, 25) + "~";  // Nom long (ESP32) : on le coupe
-    minitel.print(n);
+    if (strlen(nom) <= 26) minitel.print(nom);
+    else {  // Nom long (ESP32) : on l'affiche coupé, sans couper une lettre accentuée
+      char court[27];  // (nom sert encore à trouver le fichier suivant : on n'y touche pas)
+      byte n = 25;
+      while (n > 0 && (((byte) nom[n]) & 0xC0) == 0x80) n--;
+      memcpy(court, nom, n);
+      court[n] = '~';
+      court[n + 1] = 0;
+      minitel.print(court);
+    }
     fichTaille(taille, rangee);
   }
   minitel.moveCursorXY(1, 21);
@@ -234,7 +289,7 @@ void fichAfficherTexte(const char* chemin)
     if (couper) {
       ligne[octets] = 0;
       minitel.moveCursorXY(1, rangee);
-      minitel.print(String(ligne));
+      minitel.print(ligne);
       octets = 0;
       colonnes = 0;
       if (++rangee > 22 && !fin) {
@@ -265,7 +320,7 @@ byte fichFichier(const char* nom, unsigned long taille)
   while (true) {
     fichTitre(F(" Carte SD "));
     minitel.moveCursorXY(1, 4);
-    minitel.print(String(nom));
+    minitel.print(nom);
     fichTaille(taille, 4);
     minitel.moveCursorXY(1, 5);
     if (programme) minitel.print(F("Programme reBASIC"));
@@ -381,10 +436,10 @@ void fichProgres(unsigned long octets, unsigned long total, byte rangee)
 {
   // Où en est la copie (n octets / total)
   minitel.moveCursorXY(1, rangee);
-  minitel.print(String(octets));
+  fichNombre(octets);
   if (total > 0) {
     minitel.print(F(" / "));
-    minitel.print(String(total));
+    fichNombre(total);
   }
   minitel.print(F(" octets"));
 }
@@ -436,7 +491,7 @@ void fichVersPC(const char* chemin, unsigned long taille)
   if (!basPcAnswer()) { fichMessagePC(19); return; }
   minitel.moveCursorXY(1, 17);
   minitel.print(F("Copié sur le PC : "));
-  minitel.print(String(chemin + 1));
+  minitel.print(chemin + 1);
   minitel.clearLineFromCursor();
   minitel.moveCursorXY(1, 19);
   minitel.clearLineFromCursor();
@@ -495,7 +550,7 @@ boolean fichDepuisPC(const char* nom, unsigned long taille, byte rangee)
   }
   minitel.moveCursorXY(1, rangee);
   minitel.print(F("Copié sur la carte SD : "));
-  minitel.print(String(nom));
+  minitel.print(nom);
   minitel.clearLineFromCursor();
   bipOK();
   return true;
@@ -549,13 +604,9 @@ void pcFichiers()
     int pages = (nombre + FICH_PAR_PAGE - 1) / FICH_PAR_PAGE;
     if (page > 0 && page >= pages) { page = 0; continue; }  // Le dossier a changé
     minitel.moveCursorXY(6, 1);
-    minitel.print(String(nombre));
+    fichNombre(nombre);
     minitel.print(nombre == 1 ? F(" fichier") : F(" fichiers"));
-    if (pages > 1) {
-      String p = String(page + 1) + "/" + String(pages);
-      minitel.moveCursorXY(41 - p.length(), 1);
-      minitel.print(p);
-    }
+    fichPages(page, pages);
     if (nombre == 0) {
       minitel.moveCursorXY(1, 4);
       minitel.print(F("Le dossier du PC est vide."));
@@ -567,7 +618,7 @@ void pcFichiers()
       minitel.printChar('A' + i);
       minitel.attributs(FOND_NORMAL);
       minitel.print(F(" "));
-      minitel.print(String(noms[i]));
+      minitel.print(noms[i]);
       fichTaille(tailles[i], 3 + i);
       surPage++;
     }
@@ -611,7 +662,7 @@ void pcFichiers()
     strcpy(chemin + 1, noms[choix]);
     minitel.moveCursorXY(1, 20);
     minitel.print(F("Copier "));
-    minitel.print(String(noms[choix]));
+    minitel.print(noms[choix]);
     minitel.print(F(" sur la carte ?"));
     if (SD.exists(chemin)) {
       minitel.moveCursorXY(1, 21);

@@ -7,7 +7,7 @@
 # → sortie/Tutoriel_reBASIC.odt et sortie/Tutoriel_reBASIC.pdf
 ```
 
-Chaque exemple du tutoriel est **exécuté dans le simulateur** (`../simulateur`), avec le `Basic.ino` du croquis. Les images d'écran du document sont donc toujours à jour : si reBASIC change, il suffit de relancer `./fabriquer.sh`. La fabrication s'arrête si un exemple produit une erreur inattendue ou dépasse les limites de l'Arduino Mega (lignes de 78 caractères, chaînes de 32 octets, programmes de 2048 octets).
+Chaque exemple du tutoriel est **exécuté dans le simulateur** (`../simulateur`), avec le `Basic.ino` du croquis. Les images d'écran du document sont donc toujours à jour : si reBASIC change, il suffit de relancer `./fabriquer.sh`. La fabrication s'arrête si un exemple produit une erreur inattendue ou dépasse les limites de l'Arduino Mega (lignes de 78 caractères, chaînes de 32 octets, programmes de 2304 octets, mots-clés tokenisés compris).
 
 ## Ce qu'il faut
 

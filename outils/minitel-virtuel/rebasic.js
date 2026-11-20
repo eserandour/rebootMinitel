@@ -25,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '2026.11.19e';  // Celle de rebootMinitel
+  const VERSION = '2026.11.20a';  // Celle de rebootMinitel
 
   ////////////////////////////////////////////////////////////////////////////////////
   // Constantes de Minitel1B_Hard
@@ -133,6 +133,60 @@
     return n;
   }
 
+  // Les mots-clés « tokenisés » (basTokNoms dans Basic.ino). Sur la carte, chaque mot-clé
+  // du programme est rangé sous la forme d'un code d'un octet (les TOK_UN premiers) ou de
+  // deux octets (les suivants). Ici, le programme reste en texte (l'interpréteur le lit
+  // exactement comme Basic.ino lit le texte tokenisé), mais sa taille est comptée comme
+  // sur la carte : tailleTokenisee() reprend basTokenize.
+  const TOK_NOMS = [
+    'PRINT', 'INPUT', 'IF', 'THEN', 'ELSE', 'GOTO', 'GOSUB', 'RETURN',
+    'FOR', 'TO', 'STEP', 'NEXT', 'WHILE', 'WEND', 'DATA', 'READ',
+    'RESTORE', 'DIM', 'REM', 'END', 'STOP', 'CLS', 'LOCATE', 'PAUSE',
+    'SOUND', 'BEEP', 'PLOT', 'LINE', 'BOX', 'CIRCLE', 'COLOR', 'PAPER',
+    'INVERSE', 'FLASH', 'UNDERLINE', 'SIZE', 'AND', 'OR', 'NOT', 'MOD',
+    'INT', 'RND', 'LEN', 'CHR$', 'STR$', 'LEFT$', 'RIGHT$', 'MID$',
+    'INKEY$', 'KEY', 'POINT', 'TIMER', 'TIME$', 'DATE$', 'ASC', 'VAL',
+    'INSTR', 'TAB', 'ABS', 'SQR', 'SIN', 'COS', 'ON', 'VDT',
+    'CHAIN', 'SGN', 'TAN', 'ATN', 'LOG', 'EXP', 'HOUR', 'MINUTE',
+    'SECOND', 'DAY', 'MONTH', 'YEAR', 'DREAD', 'AREAD', 'EOF', 'HEX$',
+    'UPPER$', 'LOWER$', 'OPEN', 'CLOSE', 'OUTPUT', 'APPEND', 'PINMODE', 'DWRITE',
+    'AWRITE', 'LET', 'RUN', 'LIST', 'NEW', 'MEM', 'RENUM', 'AIDE',
+    'HELP', 'SAVE', 'LOAD', 'MERGE', 'FILES', 'KILL', 'EDIT'
+  ];
+  const TOK_UN = 64;
+  const estLettre = (ch) => ch !== undefined && ch >= 'A' && ch <= 'Z';
+
+  function tailleTokenisee(s) {
+    // Nombre d'octets du texte s (en majuscules) une fois tokenisé, comme basTokenize
+    let n = 0, i = 0;
+    let brut = false, donnees = false, guillemets = false;
+    while (i < s.length) {
+      const ch = s[i];
+      const c = s.codePointAt(i);
+      if (c >= 0x80) { const l = String.fromCodePoint(c); n += u8c(l); i += l.length; continue; }
+      if (ch === '"') guillemets = !guillemets;
+      if (guillemets || brut || ch === '"') { n++; i++; continue; }
+      if (donnees) { if (ch === ':') donnees = false; n++; i++; continue; }
+      if (ch === "'") { brut = true; n++; i++; continue; }
+      if (!estLettre(ch)) { n++; i++; continue; }
+      // Début d'un mot
+      if (s.startsWith('REM', i)) brut = true;
+      else if (s.startsWith('DATA', i)) donnees = true;
+      let id = -1;
+      for (let k = 0; k < TOK_NOMS.length; k++) {
+        const nom = TOK_NOMS[k];
+        if (!s.startsWith(nom, i)) continue;
+        if (estLettre(nom[nom.length - 1]) && estLettre(s[i + nom.length])) continue;
+        id = k;
+        break;
+      }
+      if (id < 0) { while (estLettre(s[i])) { n++; i++; } continue; }
+      n += id < TOK_UN ? 1 : 2;
+      i += TOK_NOMS[id].length;
+    }
+    return n;
+  }
+
   function u8tronquer(s, max) {
     // Les premiers caractères de s qui tiennent dans max octets
     let n = 0, out = '';
@@ -160,8 +214,12 @@
   // Mêmes règles que le simulateur de rebootMinitel (STUM 1B, partie 2, chapitre 2) :
   // - couleur, clignotement, inversion et taille s'appliquent aux caractères qui suivent ;
   // - le fond et le soulignement sont des attributs de zone : ils restent latents jusqu'au
-  //   prochain espace (délimiteur), puis valent jusqu'à la fin de la rangée ; un caractère
-  //   semi-graphique valide aussi le fond ;
+  //   prochain espace (délimiteur) ; un caractère semi-graphique valide aussi le fond, et
+  //   délimite lui aussi une zone ;
+  // - une case qui n'est pas un délimiteur (lettre, espace sans changement, case jamais
+  //   écrite) montre le fond du dernier délimiteur à sa gauche, au moment de l'affichage :
+  //   récrire un délimiteur change le fond des cases qui le suivent, jusqu'au suivant
+  //   (constaté sur un Minitel 1B Alcatel) ;
   // - le passage en semi-graphique annule la taille, l'inversion et le soulignement ;
   // - la double hauteur est dessinée vers le haut, et ignorée sur la première rangée ;
   // - mode rouleau : l'écran défile quand on descend sous la 24e rangée.
@@ -223,6 +281,18 @@
       else this.nouvelleRangee();
     }
 
+    propager(r, c) {
+      // Le fond d'une case qui n'est pas un délimiteur est celui du dernier délimiteur à
+      // sa gauche : on le recalcule pour la case écrite et celles qui la suivent
+      const l = this.cases[r];
+      const g = c > 0 ? l[c - 1] : null;
+      const z = l[c].delim ? l[c].fond : (g ? g.zoneFond : 0);
+      for (let j = c; j < 40; j++) {
+        if (j > c && l[j].delim) break;
+        l[j].fond = z; l[j].zoneFond = z;
+      }
+    }
+
     defiler() {
       this.cases.shift();
       const l = [];
@@ -240,7 +310,11 @@
       if (this.rangee0) return;  // La rangée 0 n'est pas dessinée
       this.dernier = [car, graphique, points];  // Pour la répétition (REP)
       let delimiteur = false;
-      if (graphique) this.fondZone = this.fondLatent;
+      if (graphique) {
+        this.fondZone = this.fondLatent;
+        this.delimiteurAttendu = false;
+        delimiteur = true;
+      }
       else if (car === ' ' && (this.delimiteurAttendu || this.fondLatent !== this.fondZone || this.soulLatent !== this.soulZone)) {
         this.fondZone = this.fondLatent;
         this.soulZone = this.soulLatent;
@@ -261,7 +335,9 @@
           x.souligne = (graphique || delimiteur) ? false : this.soulZone;
           x.graphique = graphique; x.points = points; x.taille = t;
           x.zoneFond = this.fondZone; x.zoneSouligne = this.soulZone;
+          x.delim = delimiteur && dx === 0 && dy === 0;
           this.cases[rr][cc] = x;
+          this.propager(rr, cc);
         }
       }
       this.avancer(larg);
@@ -435,9 +511,11 @@
 
   function creerInterpreteur(env) {
     const esp = (env.carte === 'esp32');
-    const PROG_SIZE = esp ? 16384 : 2048;
+    // Le programme et les tableaux se partagent MEM_SIZE octets (BAS_MEM_SIZE) : le programme
+    // part du début, les tableaux de la fin (4 octets par élément)
+    const MEM_SIZE = esp ? 20384 : 2304;
+    const MEM_FLOATS = MEM_SIZE / 4;
     const STR_MAX = esp ? 78 : 32;
-    const ARR_SIZE = esp ? 1000 : 64;
     const LINE_MAX = 78;
     const TEXT_MAX = LINE_MAX + 24;
     const GOSUB_MAX = 12, FOR_MAX = 8, WHILE_MAX = 6, FILE_MAX = 2;
@@ -451,10 +529,12 @@
     // Les variables
     const vars = new Float32Array(26);
     const strs = new Array(26).fill('');
-    const arr = new Float32Array(ARR_SIZE);
+    const arr = new Float32Array(MEM_FLOATS);  // Les éléments des tableaux sont à la fin
     const arrBase = new Int32Array(26).fill(-1);
     const arrDim = new Int32Array(26);
     let arrUsed = 0;
+    let chaine = false;  // CHAIN en cours : les tableaux doivent être gardés
+    const libre = () => MEM_SIZE - progLen - 4 * arrUsed;
 
     // Les piles (ligne : indice dans prog, -1 pour la ligne tapée au clavier)
     let gs = [], fors = [], whs = [];
@@ -627,12 +707,12 @@
     const HELP_PAGES = 4;
     const AIDE = [
       ['Commandes :', ' RUN LIST [n][-m] [/P] NEW MEM AIDE', ' EDIT n  RENUM [d\u00e9but][,pas]',
-        ' SAVE "NOM" LOAD "NOM" MERGE "NOM"', ' FILES KILL "NOM"', ' "PC:NOM" FILES "PC:" : sur le PC', '',
+        ' SAVE "NOM" LOAD "NOM" MERGE "NOM"', ' FILES KILL "NOM"', ' CHAIN "NOM" (garde les variables)', ' "PC:NOM" FILES "PC:" : sur le PC', '',
         'Instructions :', ' PRINT (ou ?) avec ; , TAB(n)', ' INPUT ["texte";] v[,v...]',
         ' [LET] v = expression', ' IF cond THEN ... [ELSE ...]', ' GOTO n  GOSUB n  RETURN',
         ' ON x GOTO n1,n2...  ON x GOSUB ...', ' FOR v=a TO b [STEP c] ... NEXT [v]',
         ' WHILE cond ... WEND', ' DATA  READ v[,v...]  RESTORE [n]', ' DIM A(n)  REM  END  STOP'],
-      ['Ecran (couleurs 0 \u00e0 7) :', ' CLS  LOCATE col,rang', ' COLOR n  PAPER n (fond)',
+      ['Ecran (couleurs 0 \u00e0 7) :', ' CLS  LOCATE col,rang', ' VDT "NOM" : page Vid\u00e9otex NOM.VDT', ' COLOR n  PAPER n (fond)',
         ' INVERSE n  FLASH n  UNDERLINE n', ' SIZE n (0 normale, 1 double hauteur,',
         '  2 double largeur, 3 double taille)', ' PAPER et UNDERLINE commencent au',
         ' premier espace qui suit.', '', 'Son :', ' BEEP  SOUND f,ms  PAUSE ms', '',
@@ -1074,22 +1154,27 @@
       dataLigne = -1; dataPos = 0; dataIn = false;
     }
 
-    function clearVars() {
-      vars.fill(0);
-      strs.fill('');
+    function clearArrays() {
       arrBase.fill(-1);
       arrDim.fill(0);
       arrUsed = 0;
+    }
+
+    function clearVars() {
+      vars.fill(0);
+      strs.fill('');
+      clearArrays();
       resetStacks();
     }
 
     function dim(idx, n) {
+      // Les tableaux sont rangés à la fin de la mémoire, le dernier réservé le plus bas
       if (arrBase[idx] >= 0 || n < 0) { err = E_VALEUR; return; }
-      if (n + 1 > ARR_SIZE - arrUsed) { err = E_MEMOIRE; return; }
-      arrBase[idx] = arrUsed;
-      arrDim[idx] = n;
-      for (let i = 0; i <= n; i++) arr[arrUsed + i] = 0;
+      if (n + 1 > Math.floor(libre() / 4)) { err = E_MEMOIRE; return; }
       arrUsed += n + 1;
+      arrBase[idx] = MEM_FLOATS - arrUsed;
+      arrDim[idx] = n;
+      for (let i = 0; i <= n; i++) arr[arrBase[idx] + i] = 0;
     }
 
     function arrRef(idx) {
@@ -1546,7 +1631,7 @@
       return i;
     }
 
-    const tailleLigne = (t) => 3 + u8len(t) + 1;
+    const tailleLigne = (t) => 3 + tailleTokenisee(t) + 1;
 
     function storeLine(num, texte) {
       const i = findLine(num);
@@ -1554,7 +1639,13 @@
       if (i < prog.length && prog[i].n === num) ancienne = tailleLigne(prog[i].t);
       const t = texte.replace(/ +$/, '');
       const nouvelle = t.length > 0 ? tailleLigne(t) : 0;
-      if (progLen - ancienne + nouvelle > PROG_SIZE) return false;
+      if (nouvelle - ancienne > libre()) {
+        // Hors d'un programme en cours, les tableaux sont oubliés pour faire de la place
+        // (jamais pendant un programme ou un CHAIN), comme basStoreLine
+        if (arrUsed === 0 || cur >= 0 || chaine) return false;
+        clearArrays();
+        if (nouvelle - ancienne > libre()) return false;
+      }
       dataLigne = -1;
       dataIn = false;
       if (ancienne > 0) { prog.splice(i, 1); progLen -= ancienne; }
@@ -1634,10 +1725,17 @@
       if (!env.sd.ecrire(nom, versOctets(programmeTexte()))) err = E_FICHIER;
     }
 
-    function chargerTexte(texte, fusion) {
-      // Les lignes d'un texte, comme LOAD (fusion faux) ou MERGE (fusion vrai)
+    function chargerTexte(texte, fusion, enchainer) {
+      // Les lignes d'un texte, comme LOAD (fusion faux) ou MERGE (fusion vrai) ; CHAIN
+      // (enchainer vrai) garde les variables, les tableaux et les fichiers ouverts
       stop = true;
-      if (!fusion) {
+      if (enchainer) {
+        prog = [];
+        progLen = 0;
+        resetStacks();
+        chaine = true;
+      }
+      else if (!fusion) {
         closeAll();
         prog = [];
         progLen = 0;
@@ -1652,11 +1750,39 @@
       }
     }
 
-    function load(fusion) {
+    function load(fusion, enchainer) {
+      // LOAD, MERGE (fusion vrai) ou CHAIN (enchainer vrai : le programme est lancé)
       const nom = fileName('.BAS', true);
       if (!nom) return;
       if (!env.sd.existe(nom)) { err = E_INTROUV; return; }
-      chargerTexte(depuisOctets(env.sd.lire(nom)), fusion);
+      chargerTexte(depuisOctets(env.sd.lire(nom)), fusion, enchainer);
+      chaine = false;
+      if (!enchainer) return;
+      if (err) { cur = -1; T = ''; P = -1; return; }  // L'ancien programme n'est plus là (pas de ligne à montrer)
+      if (prog.length === 0) return;
+      aller(0, 0);  // On lance le nouveau programme, à sa première ligne
+      jumped = true;
+      stop = false;
+    }
+
+    function* vdt() {
+      // VDT "NOM" : envoie au Minitel la page Vidéotex NOM.VDT, comme basVdt
+      const nom = fileName('.VDT', false);
+      if (!nom) return;
+      if (!env.sd.existe(nom)) { err = E_INTROUV; return; }
+      const octets = env.sd.lire(nom);
+      for (let i = 0; i < octets.length && err === 0; i++) {
+        wb(octets[i] & 0x7F);
+        if (i % 32 === 31) {
+          checkBreak();
+          while (env.fileOctets() > 64 && err === 0) yield ATTENTE_FLUX;
+        }
+      }
+      wb(0x0F);  // Retour aux caractères texte
+      wb(0x14);  // Curseur caché
+      resetAttr();
+      col = 0;
+      gfxClear();
     }
 
     function files() {
@@ -2310,11 +2436,11 @@
       for (const l of prog) {
         const t = renumText(l.t, debut, pas);
         if (t === null) { err = E_MEMOIRE; return; }
-        total += u8len(t) - u8len(l.t);
+        total += tailleTokenisee(t) - tailleTokenisee(l.t);
         if (total > maxi) maxi = total;
         textes.push(t);
       }
-      if (maxi > PROG_SIZE) { err = E_MEMOIRE; return; }
+      if (maxi > MEM_SIZE - 4 * arrUsed) { err = E_MEMOIRE; return; }
       prog = prog.map((l, i) => ({ n: debut + i * pas, t: textes[i] }));
       progLen = total;
       resetStacks();
@@ -2494,13 +2620,15 @@
         stop = true;
       }
       else if (kw('MEM')) {
-        printNum(PROG_SIZE - progLen);
+        printNum(libre());
         puts(' octets libres\n');
       }
       else if (kw('AIDE') || kw('HELP')) yield* help();
       else if (kw('SAVE')) save();
       else if (kw('LOAD')) load(false);
       else if (kw('MERGE')) load(true);
+      else if (kw('CHAIN')) load(false, true);
+      else if (kw('VDT')) yield* vdt();
       else if (kw('RENUM')) renum();
       else if (kw('OPEN')) open();
       else if (kw('CLOSE')) close();
@@ -2599,7 +2727,7 @@
       timer0 = env.millis();
       if (accueil) {
         puts('reBASIC - ');
-        printNum(PROG_SIZE - progLen);
+        printNum(libre());
         puts(' octets libres\n');
         keyName('GUIDE');
         puts(' : aide - ');
@@ -3200,7 +3328,15 @@
     }
 
     function* systeme() {
-      // La boucle de rebootMinitel : accueil, puis le menu choisi, puis retour à l'accueil
+      // La boucle de rebootMinitel : accueil, puis le menu choisi, puis retour à l'accueil.
+      // Au démarrage, si la carte SD contient AUTORUN.BAS, reBASIC le charge et le lance
+      // aussitôt (comme setup() dans rebootMinitel.ino).
+      if (env.sd.existe('AUTORUN.BAS')) {
+        newScreen();
+        yield* basic(true, 'AUTORUN');
+        if (env.surSommaire) env.surSommaire();
+        newScreen();
+      }
       while (true) {
         const choix = yield* ecranAccueil();
         newScreen();
@@ -3235,7 +3371,7 @@
       },
       programme: programmeTexte,
       enCours: () => enCours,
-      octetsLibres: () => PROG_SIZE - progLen,
+      octetsLibres: () => libre(),
       variables() {
         const o = {};
         for (let i = 0; i < 26; i++) {

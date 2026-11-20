@@ -14,6 +14,7 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 SIMDIR = os.path.join(ICI, '..', 'simulateur')
 sys.path.insert(0, SIMDIR)
 import ecran
+import tokens
 sys.path.insert(0, os.path.join(ICI, '..', 'passerelle'))
 from passerelle import Passerelle, servir
 
@@ -28,6 +29,11 @@ subprocess.run(['sh', os.path.join(SIMDIR, 'compiler.sh')], check=True)
 for d in (IMG, SD, TMP, PC):
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(d)
+# Les pages Vidéotex des exemples, sur la carte SD (pour VDT)
+EXEMPLES = os.path.join(ICI, '..', '..', 'exemples')
+for f in os.listdir(EXEMPLES):
+    if f.upper().endswith('.VDT'):
+        shutil.copy(os.path.join(EXEMPLES, f), os.path.join(SD, f))
 
 lignes = open(os.path.join(ICI, 'tutoriel.md'), encoding='utf-8').read().split('\n')
 sortie, problemes, rapport = [], [], []
@@ -62,8 +68,8 @@ def verifier(code, nom):
                 problemes.append(f'{nom} : chaîne de plus de 32 octets : "{ch}"')
         m = re.match(r'\s*\d+\s*(.*)$', l)
         if m:
-            total += 3 + len(m.group(1).rstrip().encode('utf-8')) + 1
-    if total > 2048:
+            total += tokens.taille_ligne(m.group(1))  # Mots-clés tokenisés, comme sur la carte
+    if total > tokens.MEMOIRE_MEGA:
         problemes.append(f'{nom} : programme de {total} octets')
 
 

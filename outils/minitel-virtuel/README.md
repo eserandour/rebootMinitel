@@ -2,7 +2,7 @@
 
 <img src="../../photos/minitel-virtuel.png" height="600" alt="Le Minitel virtuel : l'écran d'accueil de rebootMinitel et le clavier du Minitel 1B">
 
-Ouvrez **`index.html`** dans un navigateur : rebootMinitel démarre sur son écran d'accueil (menu, date et heure), comme sur la carte. Tapez **1** pour entrer dans reBASIC, au clavier de l'ordinateur ou sur celui du Minitel 1B dessiné sous l'écran. La liste à droite contient les programmes du dossier [`exemples/`](../../exemples/) ; « Ouvrir… » et « Enregistrer sous… » échangent les programmes avec l'ordinateur. « Ouvrir… » accepte aussi les pages Vidéotex (`.VDT`) : elles vont sur la carte SD, et le menu **2** les affiche (`SUITE`, `RETOUR`, `ENVOI` pour le défilement automatique). Les deux pages du dossier `exemples/` y sont déjà. Le menu **3** (« Fichiers ») gère la carte SD du navigateur : afficher, lancer ou supprimer un fichier.
+Ouvrez **`index.html`** dans un navigateur : rebootMinitel démarre sur son écran d'accueil (menu, date et heure), comme sur la carte. Tapez **1** pour entrer dans reBASIC, au clavier de l'ordinateur ou sur celui du Minitel 1B dessiné sous l'écran. La liste à droite contient les programmes du dossier [`exemples/`](../../exemples/) ; « Ouvrir… » et « Enregistrer sous… » échangent les programmes avec l'ordinateur. « Ouvrir… » accepte aussi les pages Vidéotex (`.VDT`) : elles vont sur la carte SD, et le menu **2** les affiche (`SUITE`, `RETOUR`, `ENVOI` pour le défilement automatique). Les deux pages du dossier `exemples/` y sont déjà. Le menu **3** (« Fichiers ») gère la carte SD du navigateur : afficher, lancer ou supprimer un fichier. Comme sur la carte, un programme `AUTORUN.BAS` enregistré sur cette carte SD est lancé dès l'ouverture de la page.
 
 | Fichier | Rôle |
 |---|---|
@@ -15,7 +15,7 @@ Ouvrez **`index.html`** dans un navigateur : rebootMinitel démarre sur son écr
 
 `rebasic.js` fait tourner **reBASIC**, le BASIC de [rebootMinitel](https://github.com/eserandour/rebootMinitel), dans un navigateur, sur l'écran d'un Minitel virtuel. Un seul fichier, sans dépendance : il suffit de le copier à côté d'une page web pour y mettre un Minitel.
 
-- **L'interpréteur** est un portage ligne à ligne de `Basic.ino` : mêmes instructions, mêmes messages d'erreur (avec la vidéo inverse à l'endroit fautif), mêmes limites que l'Arduino Mega (programme de 2048 octets, chaînes de 32 octets, 64 cases de tableaux…), nombres en `float` 32 bits comme sur l'ATmega.
+- **L'interpréteur** est un portage ligne à ligne de `Basic.ino` : mêmes instructions, mêmes messages d'erreur (avec la vidéo inverse à l'endroit fautif), mêmes limites que l'Arduino Mega (2304 octets pour le programme et les tableaux, mots-clés comptés comme sur la carte, où ils sont tokenisés ; chaînes de 32 octets…), nombres en `float` 32 bits comme sur l'ATmega.
 - **L'écran** reçoit le même flux Videotex que le vrai Minitel (codes de commande, attributs ESC, US, SS2 pour les accents, semi-graphiques) et l'interprète avec les règles du STUM 1B : attributs de zone validés par un espace, double hauteur dessinée vers le haut et sans effet sur la rangée 1, semi-graphique qui annule taille, inversion et soulignement, mode rouleau.
 - **La police** est celle du Minitel : les 128 caractères du jeu G0 du processeur EF9345, matrice de 8 × 10 points (relevés par Frédéric Bisson pour [MiEdit](https://github.com/Zigazou/miedit)), dessinés point par point, sans lissage, en taille normale comme en double hauteur, largeur ou taille. Les lettres ä, ë, î, ö et ü, qui n'ont pas de dessin propre, s'affichent sans leur tréma ou leur accent.
 - **Les caractères** passent par la même table de conversion que `print()` dans Minitel1B_Hard : lettres accentuées minuscules, £ ° ± ¼ ½ ¾ § ÷ Œ œ ← ↑ → ↓ —. Le Minitel n'a pas de majuscules accentuées : « À », « É »… s'affichent « A », « E »… (c'est pourquoi le menu affiche « A propos »). Un caractère inconnu du Minitel n'est pas affiché.
@@ -74,7 +74,7 @@ ReBASIC.creer(element, {
   carte: 'mega',         // 'mega' ou 'esp32' (16 ko de programme, chaînes de 78 octets…)
   menu: true,            // démarrer sur l'écran d'accueil de rebootMinitel (entropie LAB, menu, date et heure)
   version: ReBASIC.VERSION, // version affichée sur cet écran (par défaut, celle de rebootMinitel)
-  accueil: true,         // l'écran d'accueil « reBASIC - 2048 octets libres »
+  accueil: true,         // l'écran d'accueil « reBASIC - 2304 octets libres »
   afficherOk: true,      // le « Ok » de l'invite
   programme: null,       // programme chargé au démarrage (texte)
   lancer: false,         // le lancer (RUN) au démarrage

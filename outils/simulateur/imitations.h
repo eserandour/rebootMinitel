@@ -20,6 +20,7 @@ typedef bool boolean;
 
 // Mémoire programme (PROGMEM) : sur PC, tout est en mémoire vive
 #define PSTR(s) (s)
+#define PROGMEM
 #define strncpy_P strncpy
 #define strcpy_P strcpy
 #define strlen_P strlen
@@ -96,6 +97,7 @@ struct Case {
   int taille = 0;                     // 0 normale, 1 double hauteur, 2 double largeur, 3 double taille
   bool couverte = false;              // Partie d'un grand caractère dessiné depuis une autre case
   int zoneFond = 0; bool zoneSouligne = false;   // Attributs de zone en vigueur dans cette case
+  bool delim = false;                 // La case délimite une zone : elle a son propre fond
 };
 
 // Une touche du script de clavier
@@ -110,8 +112,12 @@ void capture(bool forcer);
 // celles du STUM 1B (partie 2, chapitre 2) :
 // - couleur, clignotement, inversion et taille s'appliquent aux caractères qui suivent ;
 // - le fond et le soulignement sont des attributs de zone : ils restent « latents » jusqu'au
-//   prochain espace (délimiteur), puis valent jusqu'à la fin de la rangée ; un caractère
-//   semi-graphique valide aussi le fond ;
+//   prochain espace (délimiteur) ; un caractère semi-graphique valide aussi le fond, et
+//   délimite lui aussi une zone ;
+// - une case qui n'est pas un délimiteur (lettre, espace sans changement, case jamais
+//   écrite) montre le fond du dernier délimiteur à sa gauche, au moment de l'affichage :
+//   récrire un délimiteur change le fond des cases qui le suivent, jusqu'au suivant
+//   (constaté sur un Minitel 1B Alcatel) ;
 // - le passage en semi-graphique annule la taille, l'inversion et le soulignement ;
 // - la double hauteur est dessinée vers le haut, et ignorée sur la première rangée.
 struct Minitel {
@@ -129,6 +135,16 @@ struct Minitel {
     if (c > 0) { fondZone = ecran[r][c - 1].zoneFond; soulZone = ecran[r][c - 1].zoneSouligne; }
     else nouvelleRangee();
   }
+  void propager(int rr, int cc) {
+    // Le fond d'une case qui n'est pas un délimiteur est celui du dernier délimiteur à sa
+    // gauche : on le recalcule pour la case écrite et celles qui la suivent
+    Case* l = ecran[rr];
+    int z = l[cc].delim ? l[cc].fond : (cc > 0 ? l[cc - 1].zoneFond : 0);
+    for (int j = cc; j < 40; j++) {
+      if (j > cc && l[j].delim) break;
+      l[j].fond = z; l[j].zoneFond = z;
+    }
+  }
   void defiler() {
     for (int i = 0; i < 23; i++) for (int j = 0; j < 40; j++) ecran[i][j] = ecran[i + 1][j];
     for (int j = 0; j < 40; j++) ecran[23][j] = Case();
@@ -138,7 +154,11 @@ struct Minitel {
   void avancer(int n) { c += n; if (c >= 40) { c -= 40; descendre(); } }
   void poser(const std::string& car, bool graphique, int points) {
     bool delimiteur = false;
-    if (graphique) fondZone = fondLatent;                 // Un semi-graphique valide le fond
+    if (graphique) {                                      // Un semi-graphique valide le fond
+      fondZone = fondLatent;
+      delimiteurAttendu = false;
+      delimiteur = true;
+    }
     else if (car == " " && (delimiteurAttendu || fondLatent != fondZone || soulLatent != soulZone)) {
       fondZone = fondLatent; soulZone = soulLatent;      // Délimiteur de zone
       delimiteurAttendu = false;
@@ -158,6 +178,8 @@ struct Minitel {
         x.souligne = (graphique || delimiteur) ? false : soulZone;   // Un délimiteur n'est pas souligné
         x.graphique = graphique; x.points = points; x.taille = t;
         x.zoneFond = fondZone; x.zoneSouligne = soulZone;
+        x.delim = delimiteur && !dx && !dy;
+        propager(rr, cc);
       }
     }
     avancer(larg);
@@ -177,7 +199,24 @@ struct Minitel {
     else if (a == 0x5C) { if (!modeGraphique) inverse = false; }
     else if (a == 0x5D) { if (!modeGraphique) inverse = true; }
   }
+  // Pour les pages Vidéotex (VDT "NOM") : positionnement (US rangée colonne), répétition
+  // du dernier caractère (REP n) et accents (SS2), le minimum pour les afficher lisiblement
+  int attenteUS = 0, rangeeUS = 0, attenteREP = 0;
+  bool ss2 = false;
+  byte dernier = ' ';
   void writeByte(byte b) {
+    if (attenteUS) {
+      if (attenteUS == 2) { rangeeUS = b - 0x40; attenteUS = 1; return; }
+      attenteUS = 0;
+      if (rangeeUS >= 1 && rangeeUS <= 24) { r = rangeeUS - 1; c = (b - 0x41 < 0) ? 0 : (b - 0x41 > 39 ? 39 : b - 0x41); zoneIci(); }
+      return;
+    }
+    if (attenteREP) { attenteREP = 0; for (int i = 0; i < b - 0x40 && i < 80; i++) writeByte(dernier); return; }
+    if (ss2) { ss2 = false; if (b >= 0x41 && b <= 0x4B) return; }  // Accent : la lettre suit seule
+    if (b == 0x1F) { attenteUS = 2; return; }
+    if (b == 0x12) { attenteREP = 1; return; }
+    if (b == 0x19) { ss2 = true; return; }
+    if (b >= 0x20 && !esc) dernier = b;
     if (esc) { esc = false; attribut(b); return; }
     if (b == 0x1B) { esc = true; return; }
     if (b == 0x0D) { c = 0; zoneIci(); return; }

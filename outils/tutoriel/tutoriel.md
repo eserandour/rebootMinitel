@@ -54,7 +54,7 @@ Allumez le Minitel et la carte rebootMinitel. Sur l'écran d'accueil, appuyez su
 
 <!--ecran mode=accueil-->
 
-- « 2048 octets libres » : la place disponible pour votre programme.
+- « 2304 octets libres » : la place disponible pour votre programme (et pour vos tableaux, chapitre 9). reBASIC est économe : chaque mot-clé (`PRINT`, `GOTO`…) n'y occupe qu'un ou deux octets, quelle que soit sa longueur. La commande `MEM` affiche la place qui reste.
 - **GUIDE** affiche l'aide (quatre pages que l'on parcourt avec **SUITE** et **RETOUR** ; **ENVOI** ramène à reBASIC).
 - **SOMMAIRE** quitte reBASIC et revient au menu. Votre programme n'est pas perdu : il est toujours là quand vous revenez.
 - **Ok** signifie que reBASIC attend vos ordres.
@@ -744,7 +744,7 @@ Un **tableau** est une variable qui contient plusieurs valeurs numérotées. `DI
 - Sans `DIM`, un tableau a automatiquement les indices 0 à 10.
 - Un indice en dehors des limites provoque l'erreur « Indice hors limites ».
 - Il n'existe que des tableaux de **nombres**, à une dimension.
-- Sur l'Arduino Mega, tous les tableaux réunis ont au plus **64 cases** (1 000 sur ESP32).
+- Les tableaux se partagent la mémoire avec le programme : 2304 octets sur l'Arduino Mega (20 384 sur ESP32), à raison de 4 octets par case. Plus le programme est court, plus les tableaux peuvent être grands : sans programme, il y a la place pour 576 cases. `MEM` dit ce qui reste.
 
 ## Compter avec un tableau : lancers de dé
 
@@ -1336,6 +1336,52 @@ Les fichiers sont les mêmes que ceux de la carte SD : on peut les écrire ou le
 **Astuce** — Pour copier des fichiers entre la carte SD et l'ordinateur (programmes, pages Vidéotex, fichiers de données), utilisez le menu **3 – Fichiers** de l'écran d'accueil : `4` copie le fichier choisi sur l'ordinateur, et `ENVOI` montre les fichiers de l'ordinateur, que l'on peut copier sur la carte.
 :::
 
+## Enchaîner des programmes : CHAIN
+
+`CHAIN "NOM"` charge `NOM.BAS` à la place du programme en cours, puis le lance aussitôt, **sans effacer les variables** : nombres, chaînes, tableaux et fichiers ouverts passent d'un programme à l'autre. Un jeu ou une histoire trop longs pour la mémoire peuvent ainsi tenir en plusieurs morceaux qui s'enchaînent.
+
+```basic
+NEW
+10 PRINT "Partie 1": N$="Alice": S=42
+20 CHAIN "PARTIE2"
+SAVE "PARTIE1"
+NEW
+10 PRINT "Partie 2"
+20 PRINT N$; " a "; S; " points"
+SAVE "PARTIE2"
+LOAD "PARTIE1"
+RUN
+```
+<!--ecran mode=direct-->
+
+- Les données (`DATA`) repartent du début du nouveau programme, et les `GOSUB`, `FOR` et `WHILE` en cours sont oubliés.
+- Un tableau ne peut pas être réservé deux fois : faites les `DIM` dans le premier programme seulement.
+- `CHAIN "PC:NOM"` enchaîne un programme rangé sur l'ordinateur.
+
+## Démarrer tout seul : AUTORUN.BAS
+
+Si la carte SD contient un programme nommé `AUTORUN.BAS`, rebootMinitel le charge et le lance **dès l'allumage**, sans passer par l'écran d'accueil. C'est pratique pour une exposition, une borne ou une œuvre : il suffit de brancher le Minitel. Pour reprendre la main, `SOMMAIRE` interrompt le programme, et un second `SOMMAIRE` revient au menu. Pour ne plus démarrer tout seul, supprimez `AUTORUN.BAS` (`KILL "AUTORUN"`) ou renommez-le.
+
+```
+SAVE "AUTORUN"
+```
+
+## Afficher une page Vidéotex : VDT
+
+Un fichier `.VDT` contient une page Minitel toute faite : les octets que le Minitel dessine à mesure qu'il les reçoit. On en trouve en ligne, ou on les compose avec un éditeur comme MiEdit. `VDT "NOM"` envoie la page `NOM.VDT` de la carte SD au Minitel, telle quelle. Le programme peut ensuite écrire ou dessiner par-dessus :
+
+```basic
+10 VDT "DEMO1"
+20 LOCATE 1, 24: PRINT "ENVOI : suite";
+30 IF KEY <> 4929 THEN 30
+40 CLS: PRINT "Fin de la démonstration"
+```
+<!--test keys="{WAIT:500}{ENVOI}"-->
+
+- L'écran n'est pas effacé avant la page (une page commence d'habitude par l'effacer elle-même).
+- Après la page, reBASIC revient à l'affichage normal, comme après `CLS`. Le curseur reste là où la page l'a laissé : placez votre texte avec `LOCATE`.
+- `ANNULATION` et `SOMMAIRE` interrompent aussi l'envoi de la page.
+
 ## Renuméroter : RENUM
 
 `RENUM` renumérote le programme de 10 en 10, et met à jour les numéros qui suivent `GOTO`, `GOSUB`, `THEN`, `ELSE`, `RESTORE` et `ON`. `RENUM 100, 5` commence à 100 avec un pas de 5.
@@ -1802,13 +1848,13 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 
 ## Commandes
 
-`RUN` · `LIST [début][-fin] [/P]` · `EDIT n` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `FILES` · `KILL "NOM"` · `SAVE "PC:NOM"` · `LOAD "PC:NOM"` · `MERGE "PC:NOM"` · `FILES "PC:"`
+`RUN` · `LIST [début][-fin] [/P]` · `EDIT n` · `NEW` · `MEM` · `RENUM [début][,pas]` · `AIDE` · `SAVE "NOM"` · `LOAD "NOM"` · `MERGE "NOM"` · `CHAIN "NOM"` · `FILES` · `KILL "NOM"` · `SAVE "PC:NOM"` · `LOAD "PC:NOM"` · `MERGE "PC:NOM"` · `CHAIN "PC:NOM"` · `FILES "PC:"`
 
 ## Instructions
 
 | Domaine | Instructions |
 |---|---|
-| Affichage | `PRINT` (`?`) avec `;` `,` `TAB(n)` · `CLS` · `LOCATE col,rang` |
+| Affichage | `PRINT` (`?`) avec `;` `,` `TAB(n)` · `CLS` · `LOCATE col,rang` · `VDT "NOM"` (page Vidéotex) |
 | Attributs | `COLOR n` · `PAPER n` · `INVERSE n` · `FLASH n` · `UNDERLINE n` · `SIZE n` |
 | Saisie | `INPUT ["texte";] v,…` |
 | Variables | `[LET] v = expr` · `DIM A(n)` |
@@ -1847,11 +1893,10 @@ On trouve environ 167 : il y a 6 façons sur 36 de faire 7.
 
 | Élément | Limite |
 |---|---|
-| Taille du programme | 2 048 octets |
+| Programme et tableaux | 2 304 octets en tout (un mot-clé = 1 ou 2 octets, une case de tableau = 4 octets) |
 | Longueur d'une ligne | 78 caractères |
 | Longueur d'une chaîne | 32 caractères (lettre accentuée = 2) |
 | Variables | `A`–`Z`, `A$`–`Z$`, tableaux `A()`–`Z()` |
-| Cases de tableaux | 64 au total |
 | Imbrications | 12 `GOSUB`, 8 `FOR`, 6 `WHILE`, 6 niveaux de parenthèses |
 | Écran texte | 40 colonnes × 24 rangées |
 | Écran graphique | 80 × 72 points |

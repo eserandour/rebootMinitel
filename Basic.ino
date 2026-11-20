@@ -25,6 +25,8 @@
     RENUM [début][,pas]  : renumérote le programme (10,10 par défaut) et met à jour
                            les numéros après GOTO, GOSUB, THEN, ELSE, RESTORE et ON...
     SAVE "NOM"   LOAD "NOM"   MERGE "NOM"   FILES   KILL "NOM"
+    CHAIN "NOM"          : charge NOM.BAS et le lance, en gardant les variables, les
+                           tableaux et les fichiers ouverts (un programme en plusieurs morceaux)
     (programmes NOM.BAS sur la carte SD ; MERGE ajoute les lignes au programme en cours)
     SAVE "PC:NOM"   LOAD "PC:NOM"   MERGE "PC:NOM"   FILES "PC:"
     (programmes rangés sur l'ordinateur, relié par le câble USB : voir basPcSave)
@@ -38,6 +40,7 @@
     DATA 12,"TEXTE",-3.5   READ variable[,variable...]   RESTORE [n]
     DIM A(n)   REM         END   STOP
     CLS        LOCATE colonne,rangée       BEEP   SOUND fréquence,durée(ms)   PAUSE durée(ms)
+    VDT "NOM"  : envoie au Minitel la page Vidéotex NOM.VDT de la carte SD
     PLOT x,y[,c]   LINE x1,y1,x2,y2[,c]    BOX x1,y1,x2,y2[,c[,p]]   CIRCLE x,y,r[,c[,p]]
     (dessin, voir plus bas)
 
@@ -121,14 +124,15 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 // Tailles (à ajuster selon la mémoire disponible)
+// Le programme et les tableaux se partagent une même zone de BAS_MEM_SIZE octets : le
+// programme part du début, les tableaux de la fin (4 octets par élément). Un petit
+// programme laisse donc de la place à de grands tableaux, et inversement.
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
-#define BAS_PROG_SIZE 16384  // Taille maximale du programme, en octets
+#define BAS_MEM_SIZE  20384  // Programme et tableaux, en octets (multiple de 4)
 #define BAS_STR_MAX   78     // Longueur maximale d'une chaîne
-#define BAS_ARR_SIZE  1000   // Nombre total d'éléments de tableaux
 #else
-#define BAS_PROG_SIZE 2048   // Taille maximale du programme, en octets
+#define BAS_MEM_SIZE  2304   // Programme et tableaux, en octets (multiple de 4)
 #define BAS_STR_MAX   32     // Longueur maximale d'une chaîne
-#define BAS_ARR_SIZE  64     // Nombre total d'éléments de tableaux
 #endif
 #define BAS_LINE_MAX  78     // Longueur maximale d'une ligne
 #define BAS_TEXT_MAX  (BAS_LINE_MAX + 24)  // Longueur maximale d'une ligne rangée (RENUM peut l'allonger)
@@ -175,18 +179,25 @@
 #define BAS_K_ANNULER 2
 #define BAS_K_AIDE    3
 
-// Le programme : une suite de lignes triées par numéro.
+// La mémoire du programme et des tableaux (des float, pour que les éléments des
+// tableaux soient bien alignés en mémoire, ce que demande l'ESP32)
+#define BAS_MEM_FLOATS (BAS_MEM_SIZE / 4)
+float basMem[BAS_MEM_FLOATS];
+
+// Le programme : une suite de lignes triées par numéro, au début de basMem.
 // Chaque ligne : numéro (2 octets), longueur du texte avec son zéro final (1 octet), texte, zéro.
-byte basProg[BAS_PROG_SIZE];
+// Le texte est « tokenisé » : chaque mot-clé y est remplacé par un code d'un ou deux octets
+// (voir basTokenize). LIST, EDIT et SAVE rendent le texte tel qu'il a été tapé.
+byte* const basProg = (byte*) basMem;
 unsigned int basProgLen = 0;
 
 // Les variables
 float basVar[26];                    // A à Z
 char basStr[26][BAS_STR_MAX + 1];    // A$ à Z$
-float basArr[BAS_ARR_SIZE];          // Eléments de tous les tableaux
-int basArrBase[26];                  // Position du tableau dans basArr (-1 : non défini)
+int basArrBase[26];                  // Position du tableau dans basMem (-1 : non défini)
 int basArrDim[26];                   // Dernier indice du tableau
-int basArrUsed = 0;
+int basArrUsed = 0;                  // Eléments de tableaux réservés, à la fin de basMem
+boolean basChaine = false;           // CHAIN en cours : les tableaux doivent être gardés
 
 // Les piles
 byte* basGsLine[BAS_GOSUB_MAX];      // GOSUB : ligne de retour
@@ -438,24 +449,38 @@ void basShowErrorLine(const char* texte, const char* pos)
     basPrintNum(basLineNum(basCur));
     basPuts(" ");
   }
+  // Le texte est rangé tokenisé : il est réaffiché avec ses mots-clés en toutes lettres.
+  // Si l'analyse s'est arrêtée sur un mot-clé, seule sa première lettre est en vidéo
+  // inverse (comme quand le texte était rangé tel quel).
   char morceau[BAS_TEXT_MAX + 1];
-  unsigned int n = pos - texte;
-  if (n > BAS_TEXT_MAX) n = BAS_TEXT_MAX;
-  memcpy(morceau, texte, n);
-  morceau[n] = 0;
+  basDetok(texte, pos, morceau, BAS_TEXT_MAX);
   basPuts(morceau);
-  // Le caractère fautif (éventuellement sur plusieurs octets)
+  // Le caractère fautif (éventuellement sur plusieurs octets, ou un mot-clé)
+  const char* suite = pos;
   byte len = 0;
   if (*pos == 0) morceau[len++] = ' ';
-  else {
-    morceau[len++] = pos[0];
-    while (len < 4 && (((byte) pos[len]) & 0xC0) == 0x80) { morceau[len] = pos[len]; len++; }
+  else if (basIsTok(pos)) {
+    morceau[len++] = basInitiale(pos);
+    suite = basStep(pos);
+  }
+  else {  // Un caractère entier (sans prendre un token qui le suivrait pour un octet de plus)
+    byte n = basU8SeqLen(pos);
+    if (n == 0) n = 1;
+    while (len < n) { morceau[len] = pos[len]; len++; }
+    suite = pos + len;
   }
   morceau[len] = 0;
   minitel.attributs(INVERSION_FOND);
   basPuts(morceau);
   minitel.attributs(FOND_NORMAL);
-  if (*pos != 0) basPuts(pos + len);
+  if (basIsTok(pos)) {  // La fin du mot-clé
+    basDetok(pos, suite, morceau, BAS_TEXT_MAX);
+    basPuts(morceau + 1);
+  }
+  if (*pos != 0) {
+    basDetok(suite, NULL, morceau, BAS_TEXT_MAX);
+    basPuts(morceau);
+  }
   if (basCol != 0) basNewLine();
 }
 
@@ -545,6 +570,7 @@ void basHelpPage(byte page)
     basPutsP(PSTR(" EDIT n  RENUM [début][,pas]\n"));
     basPutsP(PSTR(" SAVE \"NOM\" LOAD \"NOM\" MERGE \"NOM\"\n"));
     basPutsP(PSTR(" FILES KILL \"NOM\"\n"));
+    basPutsP(PSTR(" CHAIN \"NOM\" (garde les variables)\n"));
     basPutsP(PSTR(" \"PC:NOM\" FILES \"PC:\" : sur le PC\n"));
     basNewLine();
     basPutsP(PSTR("Instructions :\n"));
@@ -562,6 +588,7 @@ void basHelpPage(byte page)
   else if (page == 1) {
     basPutsP(PSTR("Ecran (couleurs 0 à 7) :\n"));
     basPutsP(PSTR(" CLS  LOCATE col,rang\n"));
+    basPutsP(PSTR(" VDT \"NOM\" : page Vidéotex NOM.VDT\n"));
     basPutsP(PSTR(" COLOR n  PAPER n (fond)\n"));
     basPutsP(PSTR(" INVERSE n  FLASH n  UNDERLINE n\n"));
     basPutsP(PSTR(" SIZE n (0 normale, 1 double hauteur,\n"));
@@ -1002,11 +1029,220 @@ boolean basIsDigit(char c)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
+// Les mots-clés « tokenisés »
+/*
+  Pour gagner de la place, les mots-clés du programme sont rangés sous la forme d'un code
+  (un « token ») : un octet de 0x80 à 0xBF pour les BAS_TOK_UN premiers mots-clés de
+  basTokNoms, deux octets (0xFF puis 0x80 à 0xBF) pour les suivants. Le reste du texte est
+  en UTF-8, où ces octets ne peuvent pas apparaître seuls : un octet de 0x80 à 0xBF qui
+  ne suit pas le premier octet d'un caractère sur plusieurs octets est donc un token.
+  Un mot-clé n'est reconnu qu'au début d'un mot (après autre chose qu'une lettre), et
+  s'il n'est pas suivi d'une lettre : exactement là où l'interpréteur le cherchait quand
+  le texte était rangé tel quel. Rien n'est tokenisé dans les chaînes entre guillemets,
+  les commentaires (REM, ') et les données des DATA. Les mots-clés de deux lettres qui
+  n'auraient qu'un code de deux octets ne sont pas tokenisés (AS).
+*/
+#define BAS_TOK_LEN 10  // Place d'un nom dans basTokNoms (9 lettres au plus, et le zéro)
+#define BAS_TOK_UN  64  // Nombre de mots-clés codés sur un seul octet
+#define BAS_TOK_EXT 0xFF  // Premier octet d'un token de deux octets
+const char basTokNoms[][BAS_TOK_LEN] PROGMEM = {
+  // Un octet (0x80 à 0xBF) : les plus fréquents
+  "PRINT", "INPUT", "IF", "THEN", "ELSE", "GOTO", "GOSUB", "RETURN",
+  "FOR", "TO", "STEP", "NEXT", "WHILE", "WEND", "DATA", "READ",
+  "RESTORE", "DIM", "REM", "END", "STOP", "CLS", "LOCATE", "PAUSE",
+  "SOUND", "BEEP", "PLOT", "LINE", "BOX", "CIRCLE", "COLOR", "PAPER",
+  "INVERSE", "FLASH", "UNDERLINE", "SIZE", "AND", "OR", "NOT", "MOD",
+  "INT", "RND", "LEN", "CHR$", "STR$", "LEFT$", "RIGHT$", "MID$",
+  "INKEY$", "KEY", "POINT", "TIMER", "TIME$", "DATE$", "ASC", "VAL",
+  "INSTR", "TAB", "ABS", "SQR", "SIN", "COS", "ON", "VDT",
+  // Deux octets (0xFF, puis 0x80 à 0xBF)
+  "CHAIN", "SGN", "TAN", "ATN", "LOG", "EXP", "HOUR", "MINUTE",
+  "SECOND", "DAY", "MONTH", "YEAR", "DREAD", "AREAD", "EOF", "HEX$",
+  "UPPER$", "LOWER$", "OPEN", "CLOSE", "OUTPUT", "APPEND", "PINMODE", "DWRITE",
+  "AWRITE", "LET", "RUN", "LIST", "NEW", "MEM", "RENUM", "AIDE",
+  "HELP", "SAVE", "LOAD", "MERGE", "FILES", "KILL", "EDIT"
+};
+#define BAS_TOK_NB ((int) (sizeof(basTokNoms) / BAS_TOK_LEN))
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+byte basU8SeqLen(const char* p)
+{
+  // Longueur du caractère UTF-8 qui commence en p (1 à 4 octets), 0 s'il est incorrect
+  byte c = (byte) p[0];
+  byte n;
+  if (c < 0x80) return 1;
+  if (c >= 0xC2 && c <= 0xDF) n = 2;
+  else if (c >= 0xE0 && c <= 0xEF) n = 3;
+  else if (c >= 0xF0 && c <= 0xF4) n = 4;
+  else return 0;
+  for (byte i = 1; i < n; i++) {
+    if ((((byte) p[i]) & 0xC0) != 0x80) return 0;
+  }
+  return n;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+int basTokId(const char* p, byte* len)
+{
+  // Le token qui commence en p : son numéro dans basTokNoms (et sa longueur, 1 ou 2
+  // octets, dans *len si len n'est pas NULL), ou -1 si ce n'est pas un token.
+  byte c = (byte) p[0];
+  if (c >= 0x80 && c <= 0xBF) { if (len) *len = 1; return c - 0x80; }
+  if (c == BAS_TOK_EXT) { if (len) *len = 2; return BAS_TOK_UN + ((byte) p[1] - 0x80); }
+  return -1;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basIsTok(const char* p)
+{
+  byte c = (byte) p[0];
+  return (c >= 0x80 && c <= 0xBF) || c == BAS_TOK_EXT;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+const char* basTokNom(int id)
+{
+  // Le nom d'un mot-clé (rangé en mémoire programme)
+  return basTokNoms[id];
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+boolean basSameP(const char* a, const char* b)
+{
+  // Deux textes rangés en mémoire programme sont-ils identiques ?
+  char c;
+  do {
+    c = (char) pgm_read_byte(a++);
+    if (c != (char) pgm_read_byte(b++)) return false;
+  } while (c != 0);
+  return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+const char* basStep(const char* p)
+{
+  // Passe au caractère suivant du texte rangé : un token, un caractère UTF-8 entier
+  // (jamais au milieu de ses octets, qui ressembleraient à des tokens) ou un octet.
+  byte n;
+  if (basTokId(p, &n) >= 0) return p + n;
+  n = basU8SeqLen(p);
+  return p + (n ? n : 1);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+int basTokFind(const char* p, byte* longueur)
+{
+  // Le mot-clé qui commence en p et n'est pas suivi d'une lettre (s'il finit par une
+  // lettre) : son numéro, et sa longueur dans *longueur. -1 s'il n'y en a pas.
+  for (int id = 0; id < BAS_TOK_NB; id++) {
+    const char* nom = basTokNom(id);
+    byte n = strlen_P(nom);
+    if (strncmp_P(p, nom, n) != 0) continue;
+    char dernier = (char) pgm_read_byte(nom + n - 1);
+    if (basIsLetter(dernier) && basIsLetter(p[n])) continue;
+    *longueur = n;
+    return id;
+  }
+  return -1;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basTokenize(char* s)
+{
+  // Remplace, sur place, les mots-clés de la ligne s (déjà en majuscules) par leurs
+  // tokens. Le texte ne peut que raccourcir. Un octet qui n'est pas de l'UTF-8 correct
+  // devient « ? » (sinon il serait pris pour un token).
+  char* r = s;  // Lecture
+  char* w = s;  // Ecriture
+  boolean brut = false;     // Commentaire : la fin de la ligne est recopiée telle quelle
+  boolean donnees = false;  // Données d'un DATA : recopiées jusqu'au ':' (hors chaînes)
+  boolean guillemets = false;
+  while (*r) {
+    byte c = (byte) *r;
+    if (c >= 0x80) {  // Caractère sur plusieurs octets (lettre accentuée...)
+      byte n = basU8SeqLen(r);
+      if (n == 0) { *w++ = '?'; r++; }
+      else while (n-- > 0) *w++ = *r++;
+      continue;
+    }
+    if (c == '"') guillemets = !guillemets;
+    if (guillemets || brut || c == '"') { *w++ = *r++; continue; }
+    if (donnees) {
+      if (c == ':') donnees = false;
+      *w++ = *r++;
+      continue;
+    }
+    if (c == '\'') { brut = true; *w++ = *r++; continue; }
+    if (!basIsLetter(c)) { *w++ = *r++; continue; }
+    // Début d'un mot
+    if (strncmp_P(r, PSTR("REM"), 3) == 0) brut = true;  // Comme basStatement et basNextWord
+    else if (strncmp_P(r, PSTR("DATA"), 4) == 0) donnees = true;  // Comme basFindData
+    byte n;
+    int id = basTokFind(r, &n);
+    if (id < 0) {  // Pas un mot-clé : le mot est recopié entier
+      while (basIsLetter(*r)) *w++ = *r++;
+      continue;
+    }
+    if (id < BAS_TOK_UN) *w++ = (char) (0x80 + id);
+    else {
+      *w++ = (char) BAS_TOK_EXT;
+      *w++ = (char) (0x80 + id - BAS_TOK_UN);
+    }
+    r += n;
+  }
+  *w = 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+int basDetok(const char* src, const char* fin, char* dst, int max)
+{
+  // Recopie dans dst le texte rangé de src à fin (exclu ; NULL : jusqu'au zéro final), avec
+  // les mots-clés en toutes lettres. Au plus max octets (plus le zéro final) ; renvoie la
+  // longueur du texte complet, qui peut dépasser max (dst est alors tronqué).
+  int n = 0;
+  const char* p = src;
+  while (*p && (fin == NULL || p < fin)) {
+    byte lg;
+    int id = basTokId(p, &lg);
+    if (id >= 0) {
+      const char* nom = basTokNom(id);
+      char c;
+      while ((c = (char) pgm_read_byte(nom++)) != 0) { if (n < max) dst[n] = c; n++; }
+      p += lg;
+    }
+    else {  // Un caractère (sur plusieurs octets s'il est accentué)
+      byte k = basU8SeqLen(p);
+      if (k == 0) k = 1;
+      while (k-- > 0 && *p) { if (n < max) dst[n] = *p; n++; p++; }
+    }
+  }
+  dst[(n < max) ? n : max] = 0;
+  return n;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 boolean basKw(const char* mot)
 {
   // Teste la présence d'un mot-clé (rangé en mémoire programme) à la position courante.
   // S'il est présent, on avance après lui.
   basSkip();
+  byte lg;
+  int id = basTokId(basP, &lg);
+  if (id >= 0) {  // Un token : est-ce ce mot-clé ?
+    if (!basSameP(mot, basTokNom(id))) return false;
+    basP += lg;
+    return true;
+  }
   byte n = strlen_P(mot);
   if (strncmp_P(basP, mot, n) != 0) return false;
   char dernier = (char) pgm_read_byte(mot + n - 1);
@@ -1026,6 +1262,20 @@ void basExpect(char c)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
+int basTokRem()
+{
+  // Le numéro du token REM
+  static int rem = -1;
+  if (rem < 0) {
+    for (int id = 0; id < BAS_TOK_NB; id++) {
+      if (strcmp_P("REM", basTokNom(id)) == 0) { rem = id; break; }
+    }
+  }
+  return rem;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 char* basNextWord(char* p)
 {
   // Cherche, à partir de p, le prochain mot (suite de lettres) en dehors des chaînes.
@@ -1037,11 +1287,15 @@ char* basNextWord(char* p)
       if (*p) p++;
     }
     else if (*p == '\'') return NULL;
+    else if (basIsTok(p)) {
+      if (basTokId(p, NULL) == basTokRem()) return NULL;
+      return p;
+    }
     else if (basIsLetter(*p)) {
       if (strncmp_P(p, PSTR("REM"), 3) == 0) return NULL;
       return p;
     }
-    else p++;
+    else p = (char*) basStep(p);  // Sans s'arrêter au milieu d'une lettre accentuée
   }
   return NULL;
 }
@@ -1050,7 +1304,8 @@ char* basNextWord(char* p)
 
 char* basWordEnd(char* p)
 {
-  // Renvoie la position qui suit le mot commençant en p
+  // Renvoie la position qui suit le mot (ou le token) commençant en p
+  if (basIsTok(p)) return (char*) basStep(p);
   while (basIsLetter(*p)) p++;
   return p;
 }
@@ -1060,7 +1315,19 @@ char* basWordEnd(char* p)
 boolean basWordIs(const char* p, const char* mot)
 {
   // Le mot qui commence en p commence-t-il par le mot-clé mot (rangé en mémoire programme) ?
+  // (un token : est-ce ce mot-clé ?)
+  int id = basTokId(p, NULL);
+  if (id >= 0) return basSameP(mot, basTokNom(id));
   return strncmp_P(p, mot, strlen_P(mot)) == 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+char* basAfterKw(char* p, const char* mot)
+{
+  // La position qui suit le mot-clé mot, reconnu en p par basWordIs (token ou lettres)
+  if (basIsTok(p)) return (char*) basStep(p);
+  return p + strlen_P(mot);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1082,7 +1349,7 @@ char* basFindElse(char* p)
   while ((p = basNextWord(p)) != NULL) {
     if (basWordIs(p, PSTR("IF"))) niveau++;
     else if (basWordIs(p, PSTR("ELSE"))) {
-      if (niveau == 0) return p + 4;
+      if (niveau == 0) return basAfterKw(p, PSTR("ELSE"));
       niveau--;
     }
     p = basWordEnd(p);
@@ -1155,6 +1422,11 @@ boolean basIsStrStart()
   basSkip();
   const char* q = basP;
   if (*q == '"') return true;
+  int id = basTokId(q, NULL);
+  if (id >= 0) {  // Fonction de chaîne (CHR$...), ou mot-clé suivi d'un $ (comme avant la tokenisation)
+    const char* nom = basTokNom(id);
+    return (pgm_read_byte(nom + strlen_P(nom) - 1) == '$') || *basStep(q) == '$';
+  }
   if (!basIsLetter(*q)) return false;
   while (basIsLetter(*q)) q++;
   return (*q == '$');
@@ -1202,15 +1474,33 @@ float basCompare(byte op, float d)
 // Variables et tableaux
 //////////////////////////////////////////////////////////////////////////////////////
 
+unsigned int basFree()
+{
+  // Mémoire libre, en octets, pour le programme et les tableaux
+  return BAS_MEM_SIZE - basProgLen - 4 * (unsigned int) basArrUsed;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basClearArrays()
+{
+  // Oublie tous les tableaux
+  for (byte i = 0; i < 26; i++) {
+    basArrBase[i] = -1;
+    basArrDim[i] = 0;
+  }
+  basArrUsed = 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 void basClearVars()
 {
   for (byte i = 0; i < 26; i++) {
     basVar[i] = 0;
     basStr[i][0] = 0;
-    basArrBase[i] = -1;
-    basArrDim[i] = 0;
   }
-  basArrUsed = 0;
+  basClearArrays();
   basResetStacks();
 }
 
@@ -1233,12 +1523,13 @@ void basResetStacks()
 void basDim(byte idx, long n)
 {
   // Réserve le tableau idx avec les indices 0 à n
+  // Les tableaux sont rangés à la fin de basMem, le dernier réservé le plus bas
   if (basArrBase[idx] >= 0 || n < 0) { basErr = BAS_E_VALEUR; return; }
-  if (n + 1 > BAS_ARR_SIZE - basArrUsed) { basErr = BAS_E_MEMOIRE; return; }
-  basArrBase[idx] = basArrUsed;
-  basArrDim[idx] = (int) n;
-  for (long i = 0; i <= n; i++) basArr[basArrUsed + i] = 0;
+  if (n + 1 > (long) (basFree() / 4)) { basErr = BAS_E_MEMOIRE; return; }
   basArrUsed += (int) n + 1;
+  basArrBase[idx] = BAS_MEM_FLOATS - basArrUsed;
+  basArrDim[idx] = (int) n;
+  for (long i = 0; i <= n; i++) basMem[basArrBase[idx] + i] = 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1255,7 +1546,7 @@ float* basArrRef(byte idx)
     if (basErr) return NULL;
   }
   if (i < 0 || i > basArrDim[idx]) { basErr = BAS_E_INDICE; return NULL; }
-  return &basArr[basArrBase[idx] + i];
+  return &basMem[basArrBase[idx] + i];
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1698,12 +1989,12 @@ float basPrimary()
   }
 
   // Fonctions
-  if (basIsLetter(c) && basIsLetter(basP[1])) {
+  if (basIsTok(basP) || (basIsLetter(c) && basIsLetter(basP[1]))) {
     if (!basEnter()) return 0;
     float v = 0;
-    if (BAS_KW("LEN") || BAS_KW("VAL") || BAS_KW("ASC")) {
-      v = basStrFunc(basP[-1]);  // N, L ou C : dernière lettre du nom de la fonction
-    }
+    if (BAS_KW("LEN")) v = basStrFunc('N');  // N, L ou C : dernière lettre du nom de la fonction
+    else if (BAS_KW("VAL")) v = basStrFunc('L');
+    else if (BAS_KW("ASC")) v = basStrFunc('C');
     else if (BAS_KW("ABS")) { v = basArg(); if (v < 0) v = -v; }
     else if (BAS_KW("INT")) { v = floor(basArg()); }
     else if (BAS_KW("SGN")) { v = basArg(); v = (v > 0) ? 1 : ((v < 0) ? -1 : 0); }
@@ -1914,14 +2205,22 @@ byte* basFindLine(unsigned int num)
 
 boolean basStoreLine(unsigned int num, const char* texte)
 {
-  // Range, remplace ou supprime (texte vide) une ligne. Renvoie false si la mémoire est pleine.
+  // Range, remplace ou supprime (texte vide) une ligne au texte déjà tokenisé. Renvoie
+  // false si la mémoire est pleine.
   byte* p = basFindLine(num);
   unsigned int ancienne = 0;
   if (p < basProgEnd() && basLineNum(p) == num) ancienne = 3 + p[2];
   unsigned int len = strlen(texte);
   while (len > 0 && texte[len - 1] == ' ') len--;  // Sans les espaces de fin
   unsigned int nouvelle = (len > 0) ? 3 + len + 1 : 0;
-  if (basProgLen - ancienne + nouvelle > BAS_PROG_SIZE) return false;
+  if (nouvelle > ancienne && nouvelle - ancienne > basFree()) {
+    // Pas assez de place. Hors d'un programme en cours (ligne tapée au clavier, LOAD ou
+    // MERGE tapé au clavier), les tableaux sont oubliés pour la faire, comme le ferait RUN ;
+    // jamais pendant un programme ou un CHAIN, qui en a encore besoin.
+    if (basArrUsed == 0 || basCur != NULL || basChaine) return false;
+    basClearArrays();
+    if (nouvelle - ancienne > basFree()) return false;
+  }
   basDataLine = NULL;  // Le programme change : on repart du premier DATA
   basDataIn = false;
   if (ancienne > 0) {
@@ -1953,6 +2252,7 @@ void basEnterLine(char* texte)
   }
   if (num < 1 || num > 65535) { basErr = BAS_E_SYNTAXE; return; }
   while (*p == ' ') p++;
+  basTokenize(p);
   if (!basStoreLine((unsigned int) num, p)) basErr = BAS_E_MEMOIRE;
 }
 
@@ -2036,24 +2336,36 @@ void basSave()
   if (SD.exists(nom)) SD.remove(nom);
   File fichier = SD.open(nom, FILE_WRITE);
   if (!fichier) { basErr = BAS_E_FICHIER; return; }
+  char texte[BAS_TEXT_MAX + 1];  // La ligne avec ses mots-clés en toutes lettres
   for (byte* p = basProg; p < basProgEnd(); p += 3 + p[2]) {
+    basDetok((char*) (p + 3), NULL, texte, BAS_TEXT_MAX);
     fichier.print(basLineNum(p));
     fichier.print(' ');
-    fichier.println((char*) (p + 3));
+    fichier.println(texte);
   }
   fichier.close();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-void basLoadStart(boolean fusion)
+#define BAS_LOAD  0  // LOAD : remplace le programme
+#define BAS_MERGE 1  // MERGE : ajoute les lignes au programme en cours
+#define BAS_CHAIN 2  // CHAIN : remplace le programme, garde les variables et le lance
+
+void basLoadStart(byte mode)
 {
-  // Avant de lire les lignes d'un LOAD (fusion faux) ou d'un MERGE (fusion vrai)
+  // Avant de lire les lignes d'un LOAD, d'un MERGE ou d'un CHAIN
   basStop = true;  // Le programme change : on arrête l'exécution en cours
-  if (!fusion) {
+  if (mode == BAS_LOAD) {
     basCloseAll();
     basProgLen = 0;
     basClearVars();
+  }
+  else if (mode == BAS_CHAIN) {
+    // Les variables, les tableaux (à la fin de basMem) et les fichiers ouverts restent
+    basProgLen = 0;
+    basResetStacks();
+    basChaine = true;  // Les lignes du nouveau programme ne doivent pas effacer les tableaux
   }
   else {
     basResetStacks();
@@ -2073,18 +2385,38 @@ void basLoadLine(char* ligne)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-void basLoad(boolean fusion)
+void basLoad(byte mode)
 {
-  // LOAD (fusion faux) remplace le programme ; MERGE (fusion vrai) ajoute les lignes
-  // du fichier au programme en cours (une ligne de même numéro est remplacée).
+  // LOAD (BAS_LOAD) remplace le programme ; MERGE (BAS_MERGE) ajoute les lignes du
+  // fichier au programme en cours (une ligne de même numéro est remplacée) ; CHAIN
+  // (BAS_CHAIN) remplace le programme sans effacer les variables, puis le lance.
   char nom[14];
   boolean pc;
   if (!basFileName(nom, PSTR(".BAS"), &pc)) return;
-  if (pc) { basPcLoad(nom, fusion); return; }
+  basChaine = false;
+  if (pc) basPcLoad(nom, mode);
+  else basSdLoad(nom, mode);
+  if (mode == BAS_CHAIN && basChaine) {  // Le nouveau programme a été lu (ou en partie)
+    basChaine = false;
+    if (basErr) { basCur = NULL; return; }  // L'ancien programme n'est plus là (pas de ligne à montrer)
+    if (basProgLen == 0) return;            // Programme vide : on s'arrête
+    basCur = basProg;                       // On le lance, à sa première ligne
+    basP = (char*) (basProg + 3);
+    basJumped = true;
+    basStop = false;
+  }
+  basChaine = false;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basSdLoad(const char* nom, byte mode)
+{
+  // Lit les lignes d'un programme de la carte SD (LOAD, MERGE ou CHAIN)
   if (!SD.exists(nom)) { basErr = BAS_E_INTROUV; return; }
   File fichier = SD.open(nom);
   if (!fichier) { basErr = BAS_E_FICHIER; return; }
-  basLoadStart(fusion);
+  basLoadStart(mode);
   byte n = 0;
   boolean fin = false;
   while (!fin && basErr == 0) {
@@ -2101,6 +2433,37 @@ void basLoad(boolean fusion)
     }
   }
   fichier.close();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+void basVdt()
+{
+  // VDT "NOM" : envoie au Minitel la page Vidéotex NOM.VDT de la carte SD, telle quelle
+  // (comme le menu 2). L'écran n'est pas effacé avant : la page le fait d'habitude
+  // elle-même. Ensuite, reBASIC revient à l'affichage normal, comme après CLS ; la
+  // position du curseur est celle où la page l'a laissé (LOCATE pour écrire ailleurs).
+  char nom[14];
+  if (!basFileName(nom, PSTR(".VDT"), NULL)) return;
+  if (!SD.exists(nom)) { basErr = BAS_E_INTROUV; return; }
+  File fichier = SD.open(nom);
+  if (!fichier) { basErr = BAS_E_FICHIER; return; }
+  minitel.pageMode();  // Une page Vidéotex est faite pour le mode page : pas de défilement
+  int compteur = 0;
+  while (fichier.available() && basErr == 0) {
+    minitel.writeByte(fichier.read() & 0x7F);  // Le Vidéotex est un code sur 7 bits
+    if (++compteur == 32) {  // De temps en temps, on regarde le clavier (ANNULATION, SOMMAIRE)
+      compteur = 0;
+      basCheckBreak();
+    }
+  }
+  fichier.close();
+  minitel.writeByte(0x0F);  // Retour aux caractères texte (G0) si la page finit en semi-graphique
+  minitel.noCursor();       // Une page peut avoir allumé le curseur
+  minitel.scrollMode();     // reBASIC travaille en mode rouleau
+  basResetAttr();
+  basCol = 0;               // Position inconnue : la page a pu laisser le curseur n'importe où
+  basGfxClear();            // Le dessin en mémoire ne correspond plus à l'écran
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -2215,11 +2578,13 @@ void basPcSave(const char* nom)
 {
   if (!basPcBegin(PSTR("@SAVE"), nom)) return;
   char num[6];
+  char texte[BAS_TEXT_MAX + 1];  // La ligne avec ses mots-clés en toutes lettres
   for (byte* p = basProg; p < basProgEnd(); p += 3 + p[2]) {
+    basDetok((char*) (p + 3), NULL, texte, BAS_TEXT_MAX);
     basUtoa(basLineNum(p), num);
     basPcSend(num);
     Serial.write(' ');
-    basPcSend((char*) (p + 3));
+    basPcSend(texte);
     Serial.write('\n');
   }
   basPcSendP(PSTR("@FIN\n"));
@@ -2228,10 +2593,10 @@ void basPcSave(const char* nom)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-void basPcLoad(const char* nom, boolean fusion)
+void basPcLoad(const char* nom, byte mode)
 {
   if (!basPcBegin(PSTR("@LOAD"), nom)) return;
-  basLoadStart(fusion);
+  basLoadStart(mode);
   while (basErr == 0 && basPcNext()) basLoadLine(basInBuf);
 }
 
@@ -2527,19 +2892,21 @@ void basList()
   if (basErr) return;
   char* suite = basP;  // basP ne doit pas changer pendant la liste si elle est lancée par un programme
   byte rangees = 0;    // Rangées de l'écran déjà remplies par la liste
+  char texte[BAS_TEXT_MAX + 1];  // La ligne avec ses mots-clés en toutes lettres
   for (byte* p = basFindLine(debut); p < basProgEnd() && basLineNum(p) <= fin && basErr == 0; p += 3 + p[2]) {
     unsigned int n = basLineNum(p);
     byte chiffres = (n >= 10000) ? 5 : (n >= 1000) ? 4 : (n >= 100) ? 3 : (n >= 10) ? 2 : 1;
+    basDetok((char*) (p + 3), NULL, texte, BAS_TEXT_MAX);
     // Rangées de cette ligne (une ligne de 40 caractères pile en prend deux : le Minitel passe
     // seul à la rangée suivante, puis vient le retour à la ligne)
-    byte hauteur = (chiffres + 1 + basU8Len((char*) (p + 3))) / 40 + 1;
+    byte hauteur = (chiffres + 1 + basU8Len(texte)) / 40 + 1;
     if (pages && rangees + hauteur > 22) {
       if (!basListPause()) break;
       rangees = 0;
     }
     basPrintNum(n);
     basPuts(" ");
-    basPuts((char*) (p + 3));
+    basPuts(texte);
     basNewLine();
     rangees += hauteur;
     basCheckBreak();
@@ -2852,7 +3219,7 @@ boolean basFindWend(byte** ligne, char** pos)
     }
     if (basWordIs(p, PSTR("WHILE"))) niveau++;
     else if (basWordIs(p, PSTR("WEND"))) {
-      if (niveau == 0) { *ligne = l; *pos = p + 4; return true; }
+      if (niveau == 0) { *ligne = l; *pos = basAfterKw(p, PSTR("WEND")); return true; }
       niveau--;
     }
     p = basWordEnd(p);
@@ -2893,7 +3260,7 @@ char* basFindData(char* p)
   // le mot DATA, ou NULL.
   while (*p) {
     while (*p == ' ') p++;
-    if (basWordIs(p, PSTR("DATA"))) return p + 4;
+    if (basWordIs(p, PSTR("DATA"))) return basAfterKw(p, PSTR("DATA"));
     if (basWordIs(p, PSTR("REM")) || *p == '\'') return NULL;
     p = basSkipStatement(p);
     if (*p == ':') p++;
@@ -3051,38 +3418,55 @@ long basRenumMap(unsigned long ancien, unsigned int debut, unsigned int pas)
 
 int basRenumText(const char* src, char* dst, unsigned int debut, unsigned int pas)
 {
-  // Recopie dans dst le texte d'une ligne en remplaçant les numéros de ligne qui suivent
-  // GOTO, GOSUB, THEN, ELSE et RESTORE. Renvoie la longueur obtenue, ou -1 si elle
-  // dépasse BAS_TEXT_MAX. Un numéro de ligne inexistante est laissé tel quel.
-  int n = 0;
+  // Recopie dans dst le texte (tokenisé) d'une ligne en remplaçant les numéros de ligne qui
+  // suivent GOTO, GOSUB, THEN, ELSE et RESTORE. Renvoie la longueur obtenue, ou -1 si le
+  // texte, avec ses mots-clés en toutes lettres, dépasse BAS_TEXT_MAX caractères (il doit
+  // pouvoir être relu par LOAD et corrigé par EDIT). Un numéro de ligne inexistante est
+  // laissé tel quel.
+  int n = 0;    // Octets écrits dans dst
+  int vu = 0;   // Longueur du texte en toutes lettres
   const char* p = src;
+// Recopie d'un octet, ou d'un token (qui compte pour toutes ses lettres)
+#define BAS_RENUM_OCTET { if (vu >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; vu++; }
+#define BAS_RENUM_MOT { byte lg_; int id_ = basTokId(p, &lg_); \
+    vu += strlen_P(basTokNom(id_)); if (vu > BAS_TEXT_MAX) return -1; \
+    while (lg_-- > 0) dst[n++] = *p++; }
   while (*p) {
-    if (n >= BAS_TEXT_MAX) return -1;
     if (*p == '"') {  // Chaîne : recopiée telle quelle
-      dst[n++] = *p++;
-      while (*p && *p != '"') { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; }
-      if (*p == '"') { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; }
+      BAS_RENUM_OCTET;
+      while (*p && *p != '"') BAS_RENUM_OCTET;
+      if (*p == '"') BAS_RENUM_OCTET;
       continue;
     }
     if (*p == '\'' || basWordIs(p, PSTR("REM"))) {  // Commentaire : la fin de la ligne est recopiée
-      while (*p) { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; }
+      if (basIsTok(p)) BAS_RENUM_MOT;
+      while (*p) BAS_RENUM_OCTET;
       break;
     }
-    if (!basIsLetter(*p)) { dst[n++] = *p++; continue; }
-    // Un mot : est-ce un mot-clé suivi d'un numéro de ligne ?
-    byte lg = 0;
-    boolean liste = false;  // Après GOTO et GOSUB, une liste (ON x GOTO n1,n2...)
-    if (basWordIs(p, PSTR("GOTO"))) { lg = 4; liste = true; }
-    else if (basWordIs(p, PSTR("GOSUB"))) { lg = 5; liste = true; }
-    else if (basWordIs(p, PSTR("THEN")) || basWordIs(p, PSTR("ELSE"))) lg = 4;
-    else if (basWordIs(p, PSTR("RESTORE"))) lg = 7;
-    if (lg == 0) {  // Autre mot : recopié
-      while (basIsLetter(*p)) { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; }
+    if (!basIsTok(p) && !basIsLetter(*p)) {  // Un caractère (entier, s'il est accentué)
+      const char* suivant = basStep(p);
+      while (p < suivant) BAS_RENUM_OCTET;
       continue;
     }
-    while (lg-- > 0) { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; }
+    // Un mot : est-ce un mot-clé suivi d'un numéro de ligne ?
+    boolean motCle = false;
+    boolean liste = false;  // Après GOTO et GOSUB, une liste (ON x GOTO n1,n2...)
+    const char* nom = NULL;
+    if (basWordIs(p, PSTR("GOTO"))) { nom = PSTR("GOTO"); liste = true; }
+    else if (basWordIs(p, PSTR("GOSUB"))) { nom = PSTR("GOSUB"); liste = true; }
+    else if (basWordIs(p, PSTR("THEN"))) nom = PSTR("THEN");
+    else if (basWordIs(p, PSTR("ELSE"))) nom = PSTR("ELSE");
+    else if (basWordIs(p, PSTR("RESTORE"))) nom = PSTR("RESTORE");
+    motCle = (nom != NULL);
+    if (!motCle) {  // Autre mot : recopié
+      if (basIsTok(p)) BAS_RENUM_MOT
+      else while (basIsLetter(*p)) BAS_RENUM_OCTET;
+      continue;
+    }
+    if (basIsTok(p)) BAS_RENUM_MOT
+    else { byte lg = strlen_P(nom); while (lg-- > 0) BAS_RENUM_OCTET; }
     while (true) {
-      while (*p == ' ') { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; }
+      while (*p == ' ') BAS_RENUM_OCTET;
       if (!basIsDigit(*p)) break;
       const char* debutNum = p;
       unsigned long ancien = 0;
@@ -3091,23 +3475,25 @@ int basRenumText(const char* src, char* dst, unsigned int debut, unsigned int pa
       if (nouveau >= 0) {
         char tmp[8];
         basUtoa((unsigned long) nouveau, tmp);
-        for (char* t = tmp; *t; t++) { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *t; }
+        for (char* t = tmp; *t; t++) { if (vu >= BAS_TEXT_MAX) return -1; dst[n++] = *t; vu++; }
       }
       else {
-        for (const char* t = debutNum; t < p; t++) { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *t; }
+        for (const char* t = debutNum; t < p; t++) { if (vu >= BAS_TEXT_MAX) return -1; dst[n++] = *t; vu++; }
       }
       if (!liste) break;
       const char* q = p;
       while (*q == ' ') q++;
       if (*q != ',') break;
-      while (p <= q) { if (n >= BAS_TEXT_MAX) return -1; dst[n++] = *p++; }  // Espaces et virgule
+      while (p <= q) BAS_RENUM_OCTET;  // Espaces et virgule
     }
   }
+#undef BAS_RENUM_OCTET
+#undef BAS_RENUM_MOT
   dst[n] = 0;
   return n;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
+//////
 
 void basRenum()
 {
@@ -3138,7 +3524,7 @@ void basRenum()
     total += len - (p[2] - 1);
     if (total > maxi) maxi = total;
   }
-  if (maxi > BAS_PROG_SIZE) { basErr = BAS_E_MEMOIRE; return; }
+  if (maxi > (long) BAS_MEM_SIZE - 4L * basArrUsed) { basErr = BAS_E_MEMOIRE; return; }
   // 2. On réécrit les textes (les anciens numéros servent encore de références)
   for (byte* p = basProg; p < basProgEnd(); ) {
     int len = basRenumText((char*) (p + 3), tmp, debut, pas);
@@ -3164,11 +3550,21 @@ void basRenum()
 
 //////////////////////////////////////////////////////////////////////////////////////
 
+char basInitiale(const char* p)
+{
+  // La première lettre du mot-clé (token ou lettres) qui commence en p
+  int id = basTokId(p, NULL);
+  if (id >= 0) return (char) pgm_read_byte(basTokNom(id));
+  return *p;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 void basStatement()
 {
   basSkip();
   char* debut = basP;  // Début de l'instruction (pour WHILE)
-  if (strncmp_P(basP, PSTR("REM"), 3) == 0 || *basP == '\'') {  // Commentaire : on saute la fin de la ligne
+  if (strncmp_P(basP, PSTR("REM"), 3) == 0 || *basP == '\'' || basTokId(basP, NULL) == basTokRem()) {  // Commentaire : on saute la fin de la ligne
     basP += strlen(basP);
   }
   else if (BAS_KW("ELSE")) {  // Fin de la branche THEN exécutée : on saute la branche ELSE
@@ -3234,7 +3630,7 @@ void basStatement()
     basStyle = 0;
   }
   else if (BAS_KW("PLOT") || BAS_KW("LINE") || BAS_KW("BOX") || BAS_KW("CIRCLE")) {
-    char genre = debut[0];  // 'P' : PLOT, 'L' : LINE, 'B' : BOX, 'C' : CIRCLE
+    char genre = basInitiale(debut);  // 'P' : PLOT, 'L' : LINE, 'B' : BOX, 'C' : CIRCLE
     if (genre == 'L' && BAS_KW("INPUT")) { basFileInput(true); return; }  // LINE INPUT #n, A$
     long c[4];
     byte n = (genre == 'P') ? 2 : (genre == 'C') ? 3 : 4;
@@ -3278,7 +3674,7 @@ void basStatement()
     basCol = (byte) (x - 1);
   }
   else if (BAS_KW("COLOR") || BAS_KW("PAPER") || BAS_KW("SIZE")) {
-    char genre = debut[0];  // 'C' : COLOR, 'P' : PAPER, 'S' : SIZE
+    char genre = basInitiale(debut);  // 'C' : COLOR, 'P' : PAPER, 'S' : SIZE
     long n = (long) basExpr();
     if (basErr) return;
     if (n < 0 || n > ((genre == 'S') ? 3 : 7)) { basErr = BAS_E_VALEUR; return; }
@@ -3303,7 +3699,7 @@ void basStatement()
     basAttr = true;
   }
   else if (BAS_KW("INVERSE") || BAS_KW("FLASH") || BAS_KW("UNDERLINE")) {
-    char genre = debut[0];  // 'I' : INVERSE, 'F' : FLASH, 'U' : UNDERLINE
+    char genre = basInitiale(debut);  // 'I' : INVERSE, 'F' : FLASH, 'U' : UNDERLINE
     long n = (long) basExpr();
     if (basErr) return;
     byte bit = (genre == 'I') ? BAS_ST_INVERSE : (genre == 'F') ? BAS_ST_FLASH : BAS_ST_SOULIGNE;
@@ -3323,8 +3719,8 @@ void basStatement()
     if (p >= basProgEnd() || basLineNum(p) != num) { basErr = BAS_E_LIGNE; basErrLigne = num; return; }
     char* fin = basUtoa(num, basInBuf);
     *fin++ = ' ';
-    if ((fin - basInBuf) + strlen((char*) (p + 3)) > BAS_LINE_MAX) { basErr = BAS_E_LONGUE; return; }
-    strcpy(fin, (char*) (p + 3));
+    int place = BAS_LINE_MAX - (fin - basInBuf);
+    if (basDetok((char*) (p + 3), NULL, fin, place) > place) { basErr = BAS_E_LONGUE; return; }
     basEditPending = true;
     basStop = true;
   }
@@ -3363,13 +3759,15 @@ void basStatement()
     basStop = true;
   }
   else if (BAS_KW("MEM")) {
-    basPrintNum(BAS_PROG_SIZE - basProgLen);
+    basPrintNum(basFree());
     basPutsP(PSTR(" octets libres\n"));
   }
   else if (BAS_KW("AIDE") || BAS_KW("HELP")) basHelp();
   else if (BAS_KW("SAVE")) basSave();
-  else if (BAS_KW("LOAD")) basLoad(false);
-  else if (BAS_KW("MERGE")) basLoad(true);
+  else if (BAS_KW("LOAD")) basLoad(BAS_LOAD);
+  else if (BAS_KW("MERGE")) basLoad(BAS_MERGE);
+  else if (BAS_KW("CHAIN")) basLoad(BAS_CHAIN);
+  else if (BAS_KW("VDT")) basVdt();
   else if (BAS_KW("RENUM")) basRenum();
   else if (BAS_KW("OPEN")) basOpen();
   else if (BAS_KW("CLOSE")) basClose();
@@ -3430,6 +3828,7 @@ void basExecuter(char* p)
 {
   // Exécute tout de suite une ligne sans numéro (déjà en majuscules), comme si on l'avait
   // tapée, puis affiche « Ok »
+  basTokenize(p);
   basP = p;
   basStop = false;
   basAttr = false;
@@ -3447,7 +3846,7 @@ void basExecuter(char* p)
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-char basLancer[BAS_STR_MAX + 1] = "";  // Programme à charger et lancer en entrant (menu 3)
+char basLancer[BAS_STR_MAX + 1] = "";  // Programme à charger et lancer en entrant (menu 3, AUTORUN.BAS)
 
 void basic()
 {
@@ -3459,7 +3858,7 @@ void basic()
   if (basProgLen == 0) basClearVars();  // Le programme est conservé quand on quitte le BASIC
   basTimer0 = millis();
   basPutsP(PSTR("reBASIC - "));
-  basPrintNum(BAS_PROG_SIZE - basProgLen);
+  basPrintNum(basFree());
   basPutsP(PSTR(" octets libres\n"));
   basKeyName(PSTR("GUIDE"));
   basPutsP(PSTR(" : aide - "));
@@ -3469,8 +3868,8 @@ void basic()
   basPutsP(PSTR("Ok\n"));
 
   if (basLancer[0]) {
-    // Le gestionnaire de la carte SD a demandé de lancer un programme : LOAD puis RUN,
-    // affichés comme si on les avait tapés
+    // Le gestionnaire de la carte SD (ou le démarrage, pour AUTORUN.BAS) a demandé de
+    // lancer un programme : LOAD puis RUN, affichés comme si on les avait tapés
     snprintf_P(basLine, BAS_LINE_MAX + 1, PSTR("LOAD \"%s\""), basLancer);
     basLancer[0] = 0;
     basPuts(basLine);

@@ -3,7 +3,7 @@
    rebootMinitel
    Copyright 2023-2026 - Eric Sérandour
 */
-   const String VERSION = "2026.11.19e";
+   const String VERSION = "2026.11.20a";
 /*
    
    This program is free software: you can redistribute it and/or modify
@@ -132,6 +132,9 @@ const byte TAG_MENU_CARTE_SD = 5;
 const byte TAG_MENU_PONG = 6;
 byte ecran = TAG_ECRAN_ACCUEIL;
 
+// *** reBASIC (Basic.ino) : programme à charger et lancer en entrant (AUTORUN.BAS, menu 3)
+extern char basLancer[];
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -172,6 +175,13 @@ void setup()
     delay(3000);
   } else {
     bipOK();
+    // Démarrage automatique : si la carte contient AUTORUN.BAS, reBASIC le charge et le
+    // lance aussitôt (LOAD puis RUN), sans passer par l'écran d'accueil. SOMMAIRE
+    // interrompt le programme ; un second SOMMAIRE revient au menu.
+    if (SD.exists("/AUTORUN.BAS")) {
+      strcpy_P(basLancer, PSTR("AUTORUN"));
+      ecran = TAG_MENU_BASIC;
+    }
   }
 }
 

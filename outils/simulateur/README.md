@@ -14,7 +14,7 @@ Le simulateur compile le **vrai `Basic.ino`** du croquis avec un compilateur C++
 | Liaison avec le PC (`Serial`) | une prise reliée à la passerelle, pour `tester.py` de [`passerelle/`](../passerelle/) ; sinon rien n'est branché (`SAVE "PC:…"` répond `PC absent`) |
 | Buzzer, broches | les appels sont notés dans un journal ; `DREAD` et `AREAD` renvoient des valeurs qui varient avec le temps |
 
-Les tailles sont celles de l'**Arduino Mega** (programme de 2048 octets, chaînes de 32 caractères…).
+Les tailles sont celles de l'**Arduino Mega** (2304 octets pour le programme et les tableaux, chaînes de 32 caractères…).
 
 ## Ce qu'il faut
 
@@ -33,7 +33,7 @@ Le simulateur se compile tout seul au premier lancement, et chaque fois que `Bas
 python3 rebasic.py lancer ../../exemples/MYSTERE.BAS -t "50\n25\n"
 ```
 
-L'écran final s'affiche dans le terminal. Le programme est lu dans un fichier texte (une ligne numérotée par ligne de fichier) ; il est vérifié avant l'exécution : lignes de plus de 78 caractères, chaînes de plus de 32 octets, programme de plus de 2048 octets.
+L'écran final s'affiche dans le terminal. Le programme est lu dans un fichier texte (une ligne numérotée par ligne de fichier) ; il est vérifié avant l'exécution : lignes de plus de 78 caractères, chaînes de plus de 32 octets, programme de plus de 2304 octets (mots-clés comptés comme sur la carte, voir `tokens.py`).
 
 | Option | Effet |
 |---|---|
@@ -93,6 +93,7 @@ Exemple : `-t "{WAIT:500}{k:6}{WAIT:200}{k:6}{WAIT:200}{k: }"` frappe 6, puis 6,
 | `compiler.sh` | compile le simulateur (`./compiler.sh --verifier` ajoute les contrôles mémoire d'AddressSanitizer) |
 | `simulateur.cpp` | programme principal : clavier scripté, mode interactif, capture de l'écran |
 | `imitations.h` | imitations de l'Arduino, du Minitel, de la carte SD et de l'horloge |
+| `tokens.py` | la place qu'occupe un programme dans la mémoire (mots-clés tokenisés), pour les vérifications |
 | `ecran.py` | dessin de l'écran en PNG ou en texte |
 
 Les dossiers `build/` et `carte_sd/` sont créés à l'utilisation.

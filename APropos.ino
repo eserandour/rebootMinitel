@@ -4,35 +4,28 @@
 
 //////////////////////////////////////////////////////////////////////////////////////
 
+void aProposLigne(const __FlashStringHelper* texte, byte x, byte rangee)
+{
+  minitel.moveCursorXY(x, rangee);
+  minitel.print(texte);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 void aPropos()
 {
-  String texte;
   minitel.noCursor();
-  
-  texte = F("rebootMinitel (2023-2026)");
-  int x = (40 - texte.length()) / 2 + 1; 
-  minitel.moveCursorXY(x, 7);
-  minitel.print(texte);
-  
-  texte = F("Un projet d'Eric Sérandour");
-  minitel.moveCursorXY(x, 9);
-  minitel.print(texte);
 
-  texte = F("basé sur sa bibliothèque");
-  minitel.moveCursorXY(x, 11);
-  minitel.print(texte);
-
-  texte = F("Minitel1B_Hard (2016-2026)");
-  minitel.moveCursorXY(x, 13);
-  minitel.print(texte);
-
-  texte = F("Logiciel Libre (GNU GPLv3)");
-  minitel.moveCursorXY(x, 15);
-  minitel.print(texte);
-
-  texte = F("https://entropie.org/3615");
-  minitel.moveCursorXY(x, 17);
-  minitel.print(texte);
+  // La première ligne est centrée ; les suivantes s'alignent sur elle. Le texte reste en
+  // mémoire programme (F) : pas de variable String.
+  static const char titre[] PROGMEM = "rebootMinitel (2023-2026)";
+  byte x = (40 - strlen_P(titre)) / 2 + 1;
+  aProposLigne((const __FlashStringHelper*) titre, x, 7);
+  aProposLigne(F("Un projet d'Eric Sérandour"), x, 9);
+  aProposLigne(F("basé sur sa bibliothèque"), x, 11);
+  aProposLigne(F("Minitel1B_Hard (2016-2026)"), x, 13);
+  aProposLigne(F("Logiciel Libre (GNU GPLv3)"), x, 15);
+  aProposLigne(F("https://entropie.org/3615"), x, 17);
 
   minitel.moveCursorXY(1, 24);
   afficherTouche(F("SOMMAIRE"));

@@ -1,8 +1,8 @@
-# rebootMinitel (version 2026.11.19e)
+# rebootMinitel (version 2026.11.20a)
 
 Redonner vie au Minitel 1B : un croquis et un shield Arduino qui transforment le Minitel en petit ordinateur autonome, avec une horloge et **reBASIC**, un interpréteur BASIC conçu pour l'écran et le clavier du Minitel.
 
-Grâce à la **carte SD** du shield, reBASIC enregistre et recharge les programmes (`SAVE`, `LOAD`, `MERGE`), et chaque programme peut écrire et relire ses propres fichiers de données : scores, carnet d'adresses, journal de mesures… Ce sont de simples fichiers texte, que l'on peut aussi ouvrir sur un ordinateur, par exemple dans un tableur.
+Grâce à la **carte SD** du shield, reBASIC enregistre et recharge les programmes (`SAVE`, `LOAD`, `MERGE`), enchaîne un programme sur un autre en gardant ses variables (`CHAIN`), affiche des pages Vidéotex toutes faites (`VDT`), et chaque programme peut écrire et relire ses propres fichiers de données : scores, carnet d'adresses, journal de mesures… Ce sont de simples fichiers texte, que l'on peut aussi ouvrir sur un ordinateur, par exemple dans un tableur.
 
 La carte peut aussi rester reliée à l'**ordinateur** par son câble USB : depuis le Minitel, `SAVE "PC:NOM"` enregistre alors le programme dans un dossier de l'ordinateur, et `LOAD "PC:NOM"` l'y reprend (voir [Programmes sur le PC](#programmes-sur-le-pc)). Une carte sans horloge (shield sans DS3231, ESP32 seul) y prend aussi l'heure.
 
@@ -31,6 +31,7 @@ Site : <https://entropie.org/3615>
   - [Saisie et touches](#saisie-et-touches)
   - [Commandes](#commandes)
   - [Programmes sur le PC](#programmes-sur-le-pc)
+  - [Enchaîner des programmes](#enchaîner-des-programmes)
   - [Instructions](#instructions)
   - [Attributs d'affichage](#attributs-daffichage)
   - [Fonctions](#fonctions)
@@ -79,6 +80,8 @@ Le dossier du croquis doit porter le même nom que le fichier `.ino` principal.
 
 Au démarrage, le croquis cherche la vitesse du Minitel puis la règle à 4800 bauds. Il vérifie ensuite l'horloge et la carte SD. Un message s'affiche si l'une d'elles est absente, mais le croquis continue sans elle.
 
+**Démarrage automatique** : si la carte SD contient un programme `AUTORUN.BAS`, reBASIC le charge et le lance aussitôt (`LOAD` puis `RUN`), sans passer par l'écran d'accueil. Pratique pour une exposition ou une œuvre : il suffit d'allumer. `SOMMAIRE` interrompt le programme, et un second `SOMMAIRE` revient au menu. Pour ne plus démarrer tout seul, supprimez ou renommez `AUTORUN.BAS`.
+
 Sans horloge DS3231, rebootMinitel garde l'heure avec une horloge logicielle : il prend l'**heure de l'ordinateur** si la [passerelle](outils/passerelle/README.md#lheure-du-pc) tourne (au démarrage, ou dès qu'elle est lancée, depuis l'écran d'accueil), et on peut aussi la régler à la main (menu 0). Elle perd l'heure quand la carte s'éteint.
 
 Le menu d'accueil, qui affiche la date et l'heure, propose :
@@ -94,7 +97,7 @@ Le menu d'accueil, qui affiche la date et l'heure, propose :
 
 ### Pages Vidéotex (menu 2)
 
-Le menu 2 affiche les **pages Minitel** de la carte SD : les fichiers `.VDT` placés à la racine de la carte, par ordre alphabétique. Un premier écran donne le nombre de pages et les touches ; `SUITE` (ou `ENVOI`, pour le défilement automatique) affiche alors la première page. Ensuite, on ne voit que les pages : aucune explication n'est écrite par-dessus. Un fichier `.VDT` contient les octets d'une page Vidéotex, envoyés tels quels au Minitel. On en trouve en ligne, ou on les compose avec un éditeur comme [MiEdit](https://github.com/Zigazou/miedit). Le dossier [`exemples/`](exemples/) en contient deux (`DEMO1.VDT` et `DEMO2.VDT`).
+Le menu 2 affiche les **pages Minitel** de la carte SD : les fichiers `.VDT` placés à la racine de la carte, par ordre alphabétique. Un premier écran donne le nombre de pages et les touches ; `SUITE` (ou `ENVOI`, pour le défilement automatique) affiche alors la première page. Ensuite, on ne voit que les pages : aucune explication n'est écrite par-dessus. Un fichier `.VDT` contient les octets d'une page Vidéotex, envoyés tels quels au Minitel. On en trouve en ligne, ou on les compose avec un éditeur comme [MiEdit](https://github.com/Zigazou/miedit). Le dossier [`exemples/`](exemples/) en contient deux (`DEMO1.VDT` et `DEMO2.VDT`). Un programme reBASIC peut aussi afficher une page avec [`VDT "NOM"`](#instructions), puis écrire ou dessiner par-dessus.
 
 | Touche | Effet |
 |---|---|
@@ -148,7 +151,7 @@ Il commande aussi les broches libres de l'Arduino : sorties numériques (`DWRITE
 Pour apprendre à programmer en reBASIC, pas à pas et avec de nombreux exemples : le tutoriel **[Programmer en reBASIC](Tutoriel_reBASIC.pdf)** (aussi en [ODT](Tutoriel_reBASIC.odt)).
 
 ```
-reBASIC - 2048 octets libres
+reBASIC - 2304 octets libres
 GUIDE : aide - SOMMAIRE : retour au menu
 Ok
 10 FOR I=1 TO 5
@@ -187,9 +190,10 @@ RUN
 | `SAVE "NOM"` | Enregistre le programme dans `NOM.BAS` sur la carte SD |
 | `LOAD "NOM"` | Charge `NOM.BAS` (remplace le programme en cours) |
 | `MERGE "NOM"` | Ajoute les lignes de `NOM.BAS` au programme en cours (une ligne de même numéro est remplacée) |
+| `CHAIN "NOM"` | Charge `NOM.BAS` et le lance aussitôt, **sans effacer les variables** : nombres, chaînes, tableaux et fichiers ouverts passent d'un programme à l'autre (voir [Enchaîner des programmes](#enchaîner-des-programmes)) |
 | `FILES` | Liste les fichiers de la carte SD par ordre alphabétique, avec leur taille (les programmes sans leur extension `.BAS`) |
 | `KILL "NOM"` | Supprime `NOM.BAS` (ou le fichier nommé, s'il a une extension : `KILL "DONNEES.TXT"`) |
-| `SAVE "PC:NOM"`, `LOAD "PC:NOM"`, `MERGE "PC:NOM"`, `FILES "PC:"` | Les mêmes, avec un dossier de l'ordinateur à la place de la carte SD (voir [Programmes sur le PC](#programmes-sur-le-pc)) |
+| `SAVE "PC:NOM"`, `LOAD "PC:NOM"`, `MERGE "PC:NOM"`, `CHAIN "PC:NOM"`, `FILES "PC:"` | Les mêmes, avec un dossier de l'ordinateur à la place de la carte SD (voir [Programmes sur le PC](#programmes-sur-le-pc)) |
 
 Les noms de fichiers suivent le format 8.3 : 1 à 8 lettres, chiffres, `_` ou `-`, et une extension facultative de 1 à 3 caractères.
 
@@ -214,6 +218,23 @@ Les fichiers ont le même format que sur la carte SD : on peut les écrire dans 
 
 `RENUM` met aussi à jour les numéros de ligne écrits après `GOTO`, `GOSUB`, `THEN`, `ELSE`, `RESTORE` et dans les listes de `ON … GOTO/GOSUB`. Les chaînes et les commentaires ne sont pas modifiés. Un numéro calculé (`GOTO 100+X`) ne peut pas être mis à jour. Si la place manque, rien n'est changé.
 
+### Enchaîner des programmes
+
+`CHAIN "NOM"` remplace le programme en cours par `NOM.BAS`, puis le lance à sa première ligne. Les variables (`A`–`Z`, `A$`–`Z$`), les tableaux et les fichiers de données ouverts sont gardés ; les `DATA` repartent du début, et les `GOSUB`, `FOR` et `WHILE` en cours sont oubliés. Un programme trop long pour la mémoire peut ainsi être découpé en morceaux qui s'enchaînent :
+
+```basic
+10 REM PARTIE1.BAS
+20 INPUT "Votre nom"; N$
+30 S = 0: DIM R(20)
+40 CHAIN "PARTIE2"
+```
+```basic
+10 REM PARTIE2.BAS
+20 PRINT "Bonjour "; N$; ", score : "; S
+```
+
+Un tableau ne peut pas être réservé deux fois : faites les `DIM` dans le premier programme. Si le programme appelé n'existe pas, l'erreur « Fichier introuvable » est signalée dans le programme appelant. `CHAIN "PC:NOM"` enchaîne un programme rangé sur l'ordinateur.
+
 ### Instructions
 
 **Affichage et saisie**
@@ -224,6 +245,7 @@ Les fichiers ont le même format que sur la carte SD : on peut les écrire dans 
 | `INPUT ["texte";] v[,v…]` | Demande une ou plusieurs valeurs au clavier |
 | `CLS` | Efface l'écran (et le dessin), et revient à l'affichage normal |
 | `LOCATE colonne,rangée` | Place le curseur (colonne 1 à 40, rangée 1 à 24) |
+| `VDT "NOM"` | Envoie au Minitel la page Vidéotex `NOM.VDT` de la carte SD, telle quelle (comme le [menu 2](#pages-vidéotex-menu-2)). L'écran n'est pas effacé avant (une page le fait d'habitude elle-même) ; ensuite, reBASIC revient à l'affichage normal, comme après `CLS`, et le curseur reste où la page l'a laissé (placez le texte avec `LOCATE`). `ANNULATION` et `SOMMAIRE` interrompent aussi l'envoi |
 
 Couleurs, fond, inversion, clignotement, soulignement et taille : voir [Attributs d'affichage](#attributs-daffichage).
 
@@ -458,12 +480,15 @@ Erreur de syntaxe en ligne 10
 
 | | Arduino Mega | ESP32 |
 |---|---|---|
-| Taille du programme | 2 048 octets | 16 384 octets |
+| Mémoire du programme et des tableaux (ensemble) | 2 304 octets | 20 384 octets |
 | Longueur des chaînes | 32 caractères | 78 caractères |
-| Éléments de tableaux (au total) | 64 | 1 000 |
 | Parenthèses et fonctions imbriquées | 6 niveaux | 8 niveaux |
 
-Ces tailles se règlent au début de `Basic.ino` (`BAS_PROG_SIZE`, `BAS_STR_MAX`, `BAS_ARR_SIZE`…), selon la mémoire disponible.
+Ces tailles se règlent au début de `Basic.ino` (`BAS_MEM_SIZE`, `BAS_STR_MAX`…), selon la mémoire disponible.
+
+- **Le programme et les tableaux se partagent la mémoire** : le programme en occupe le début, les tableaux la fin, à raison de 4 octets par case. Un petit programme laisse donc la place à de grands tableaux (576 cases sans programme, sur le Mega), et inversement. `MEM` affiche la place qui reste.
+- **Les mots-clés sont « tokenisés »** : dans la mémoire, chacun n'occupe qu'un octet (`PRINT`, `GOTO`, `IF`, `FOR`…) ou deux (les moins courants, comme `MINUTE` ou `PINMODE`), quelle que soit sa longueur. Un programme prend ainsi environ 20 % de place en moins (de 12 à 40 % pour les programmes du dossier `exemples/`). Rien ne change à l'écran : `LIST`, `EDIT` et `SAVE` rendent le texte tel qu'il a été tapé, et les fichiers `.BAS` restent de simples fichiers texte.
+- Si une ligne tapée au clavier ne tient plus, les tableaux sont oubliés pour lui faire de la place (comme le ferait `RUN`) ; jamais pendant l'exécution d'un programme.
 
 - `TIMER` perd de la précision après environ 4 h 30 (nombres sur 7 chiffres significatifs).
 - Une boucle `WHILE` sans `WEND` n'est signalée que si sa condition est fausse.

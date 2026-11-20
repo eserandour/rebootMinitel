@@ -150,6 +150,12 @@ const sdPartagee = creerCarteSD('memoire', '');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cmp-'));
 const sdC = path.join(tmp, 'sd');
 fs.mkdirSync(sdC);
+// Les pages Vidéotex des exemples, sur les deux cartes SD (pour VDT)
+for (const f of fs.readdirSync(path.join(depot, 'exemples')).filter((x) => /\.VDT$/i.test(x))) {
+  const octets = fs.readFileSync(path.join(depot, 'exemples', f));
+  fs.writeFileSync(path.join(sdC, f), octets);
+  sdPartagee.ecrire(f, octets);
+}
 
 function executerC(script, limite) {
   const ft = path.join(tmp, 't.txt'), fe = path.join(tmp, 'e.txt');
@@ -235,6 +241,8 @@ const extra = [
   ['edit', '10 PRINT "Bonjour Paris"\nEDIT 10\n{CORR}{CORR}{CORR}{CORR}{CORR}{CORR}Lyon"\nLIST\nRUN\n'],
   ['renum', '1 PRINT "A":GOTO 3\n2 ON X GOSUB 1,3\n3 IF A THEN 1 ELSE 2\n4 RESTORE 2\nRENUM 100,5\nLIST\n'],
   ['aide', '{GUIDE}{SUITE}{SUITE}{SUITE}{SUITE}{RETOUR}{SNAP}{ENVOI}'],
+  ['aide0', '{GUIDE}{SNAP}{ENVOI}'],
+  ['aide1', '{GUIDE}{SUITE}{SNAP}{ENVOI}'],
   ['aide2', '{GUIDE}{SUITE}{SUITE}{SUITE}{ENVOI}PRINT "ok"\n'],
   ['taille', 'CLS:LOCATE 1,1:SIZE 1:PRINT "R1":SIZE 0\nLOCATE 3,5:SIZE 3:INVERSE 1:PRINT "XY";:SIZE 2:PRINT "Z":SIZE 0:INVERSE 0\nCOLOR 3:PAPER 4:UNDERLINE 1:PRINT "A BC":UNDERLINE 0:PAPER 0\nPLOT 10,10:INVERSE 1:SIZE 2:PRINT "Q":PLOT 11,11\n'],
   ['corr', 'PRINT "abc{CORR}{CORR}d"\nSIZE 2:PRINT "ABCDEFGHIJKLMNOPQRSTUV{CORR}{CORR}{CORR}"\n'],
@@ -244,7 +252,14 @@ const extra = [
   ['while', '10 I=0:WHILE I<3:J=0:WHILE J<2:PRINT I;J;" ";:J=J+1:WEND:I=I+1:WEND\n20 WHILE 0:PRINT "non":WEND:PRINT "fin"\n30 FOR I=1 TO 3:FOR I=1 TO 2:NEXT I:NEXT\nRUN\n'],
   ['imbric', 'PRINT ((((((((1))))))))\nPRINT ABS(ABS(ABS(ABS(ABS(ABS(-1))))))\n10 GOSUB 10\nRUN\n'],
   ['data', '10 READ A,B$,C:PRINT A;B$;C\n20 DATA 1, deux , "trois": DATA 3\n30 READ D\nRUN\n'],
-  ['memoire', 'DIM A(60):DIM B(5)\nDIM C(2)\nA(61)=1\n']
+  ['memoire', 'DIM A(60):DIM B(5)\nDIM C(2)\nA(61)=1\n'],
+  // Tokenisation : la place comptée, et le texte rendu tel qu'il a été tapé
+  ['tokens', 'MEM\n10 print "Bonjour é":rem un print\n20 for i=1 to 3:next i:? tab(5);chr$(65)\n30 data abc, déf, "x:y":read a$\n40 remarque goto 10\nMEM\nLIST\nPRINT 1 THEN\nPRINT 1+CHR$\n50 IF ATHEN 10\nRUN 50\nGOTO 50\n'],
+  ['tokens-tableaux', 'DIM A(570)\nMEM\nDIM B(5)\n10 PRINT "Les tableaux sont oubliés pour faire la place"\nMEM\nPRINT A(1)\n'],
+  ['tokens-renum', '1 PRINT "A":GOTO 3:REM GOTO 3\n2 ON X GOSUB 1,3,2,1,3,2,1,3,2,1,3,2,1,3,2,1,3,2,1,3,2,1,3,2\n3 IF A THEN 1 ELSE 2\nRENUM 10000,10000\nRENUM 1000,1000\n2 ON X GOSUB 1,3,2,1,3,2,1,3,2,1,3,2,1,3\nRENUM 1000,1000\nLIST\nEDIT 2000\nMEM\n'],
+  ['chain', 'NEW\n10 A=5:A$="X":DIM T(3):T(2)=7:OPEN "D" FOR OUTPUT AS #1\n20 PRINT #1,"ok":GOSUB 30:CHAIN "P2"\n30 RETURN\nSAVE "P1"\nNEW\n10 PRINT A;A$;T(2):PRINT #1,"deux":CLOSE\n20 OPEN "D" FOR INPUT AS #1:LINE INPUT #1,B$:LINE INPUT #1,C$:CLOSE:?B$;C$\n30 CHAIN "ABSENT"\nSAVE "P2"\nLOAD "P1"\nRUN\nLIST\nCHAIN "P1"\nCHAIN "PC:X"\nMEM\n'],
+  // (le simulateur ne décode pas tout le Vidéotex : on compare l'écran effacé après la page)
+  ['vdt', 'NEW\n10 COLOR 3:INVERSE 1:VDT "DEMO2":CLS:PRINT "fin";I:X=POINT(10,10)\n20 I=I+1:IF I<3 THEN 10\n30 PRINT "Couleur normale";X\nRUN\nVDT "ABSENT"\nVDT "PC:DEMO1"\nVDT "DEMO1.BAS"\n']
 ];
 for (const [nom, s] of extra) comparer(nom, s.startsWith('{') || s.startsWith('NEW') ? s : 'NEW\n' + s, null, false, [s]);
 

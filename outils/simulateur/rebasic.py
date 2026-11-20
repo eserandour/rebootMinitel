@@ -13,6 +13,7 @@ SIMULATEUR = os.path.join(ICI, 'build', 'simulateur')
 BASIC = os.path.join(ICI, '..', '..', 'Basic.ino')
 sys.path.insert(0, ICI)
 import ecran
+import tokens
 
 
 def compiler(forcer=False):
@@ -57,9 +58,9 @@ def verifier(lignes):
                 avert.append(f'chaîne de plus de 32 octets (tronquée sur le Mega) : "{chaine}"')
         m = re.match(r'\s*\d+\s*(.*)$', l)
         if m:
-            total += 3 + len(m.group(1).rstrip().encode('utf-8')) + 1
-    if total > 2048:
-        avert.append(f'programme de {total} octets (2048 au plus sur le Mega)')
+            total += tokens.taille_ligne(m.group(1))  # Mots-clés tokenisés, comme sur la carte
+    if total > tokens.MEMOIRE_MEGA:
+        avert.append(f'programme de {total} octets ({tokens.MEMOIRE_MEGA} au plus sur le Mega)')
     return avert
 
 
